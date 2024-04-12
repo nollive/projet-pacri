@@ -1,0 +1,142 @@
+---
+title: "model-temporary"
+author: "Olivier GAUFRÈS"
+date: "2024-04-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## DATA IMPORT (TEMPORARY)
+```{r}
+wd <- getwd()
+knitr::opts_chunk$set(root.dir = wd)
+simplified_path <- file.path(wd,"..","data-simplified")
+
+## xlsx files
+cat_groupings <- read_excel(path = file.path(wd,"..","data-observed","cat_groupings.xlsx"), col_names= TRUE)
+
+## csv files
+admission <- read.csv2(file = file.path(simplified_path, "admission.csv"), header = TRUE, sep = ";")
+agenda <- read.csv2(file = file.path(simplified_path, "agenda.csv"), header = TRUE, sep = ";")
+mat_ctc <- read.csv2(file = file.path(simplified_path, "mat_ctc.csv"), header = TRUE, sep = ";")
+
+#Graph chosen (TEMPORARY)
+graph_1 <- read.csv2(file = file.path(simplified_path, "graph_1.csv"), header = TRUE, sep = ";")
+
+```
+
+
+## Model
+```{r}
+## Dimensions
+
+begin_date <- as.POSIXct("2009-07-06 00:00:00")
+end_date <- as.POSIXct("2009-09-28 00:00:00")
+time_spent <- end_date - begin_date
+
+n_individuals <- as.integer(admission %>%
+  distinct(id) %>%
+  count())
+
+n_subdivisions <- as.integer(time_spent) * 24 * 60 * 2 ## Time spent * hours * minutes * 2 (number of time subdivisions)
+
+
+## Room environment stores the viral load of each room
+## Assuming each patient is in an individual room
+
+room_environment <- admission %>%
+  distinct(id) %>%
+  filter(substr(id, 1, 2) == "PA") %>%
+  mutate(room = as.factor(row_number())) %>%
+  mutate(environment = NA) %>%
+  select(room, environment, id) %>%
+  bind_rows(admission %>%
+              distinct(id) %>%
+              filter(substr(id, 1, 2) == "PE") %>%
+              mutate(room = "Restroom") %>%
+              mutate(environment = NA)) %>%
+  bind_rows(data.frame(room = "Corridor", environment = NA, id = "ALL"))
+
+
+## Individual location stores, for every individual, the location where happened his last interaction (and the location he will be after -> might be deleted after, depends on the structure of code below)
+## Initially, every patient is in his/her room & HCW in HCW's rest room
+individual_location <- room_environment %>%
+  mutate(previous_location = room) %>%
+  mutate(future_location = NA) %>%
+  filter(id != "ALL") %>%
+  select(id, previous_location, future_location)
+```
+
+
+
+## Update of the model for each subdivision of time
+```{r}
+## Create our 2D array I containing the information whether our individual is susceptible (0), infected (1), recovered (2) or not in the ward anymore (-1)
+for (i in seq_along(list_graph)){
+  index <- gsub("[^0-9]", "", list_graph[i]) ## Graphs are not listed in order
+  assign(paste0("I_", index), 
+         array(data = 0, 
+               dim = c(n_individuals, n_subdivisions+1), 
+               dimnames = list(paste0("Individual_", 1:n_individuals), paste0("Status_for_Time_", 0:n_subdivisions))))
+}
+
+
+## Assigning the index patient --> TEMPORARY, need to be in args!
+I_1[1,1] <- 1 #TEMPORARY
+
+a <-  Sys.time()
+
+
+# Loop every subdivision of time (30s)
+for (t in 1:n_subdivisions) {
+  #Update the status
+  
+  for (patient in 1:length(I_1)) {
+    ## Susceptible (0) --> Infected (1)
+    if (I_1[patient,i-1] == 0 && runif(min = 0, max = 1) <= pInf) {
+      I[patient,i] <- 1
+    }
+      ## Infected (1) --> Recovered (2)
+    if (I_1[patient,i-1] == 1 && runif(min = 0, max = 1) <= pRec) {
+      I[patient,i] <- 2
+    }  
+  }
+
+  
+  
+  
+  
+  
+  
+  # Get the interactions happening at the time begin_date + t*30
+  interactions <- graph_1 %>%
+    filter(date_posix <= begin_date + t*30 & date_posix + length >= begin_date + t*30)
+  # Update the environment
+  if (dim(interactions)[1] != 0){
+    for (i in 1:dim(interactions)[1]) {
+      
+      
+      if  ((substr(interactions[i, "from"], 1, 2) == "PA" && substr(interactions[i, "to"], 1, 2) == "PE") |
+           (substr(interactions[i, "from"], 1, 2) == "PE" && substr(interactions[i, "to"], 1, 2) == "PA")) { ## Interactions between HCW & Patients take place in patient's room
+        
+      }
+      
+      
+      if  (substr(interactions[i, "from"], 1, 2) == "PA" && substr(interactions[i, "to"], 1, 2) == "PA") { ## Interactions between patients take place in the corridor
+        
+      }
+      
+      
+      if  (substr(interactions[i, "from"], 1, 2) == "PE" && substr(interactions[i, "to"], 1, 2) == "PE") { ## Interactions between HCW take place in the HCW's rest room
+        
+      }
+    }
+  }
+}
+
+b <-  Sys.time()
+print(b-a)
+```
