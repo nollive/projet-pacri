@@ -1,0 +1,107 @@
+---
+title: "interation-analysis"
+author: "Olivier GAUFRÈS"
+date: "2024-04-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(dplyr)
+library(Rcpp)
+library(RcppParallel)
+```
+
+## File paths
+```{r}
+wd <- getwd()
+knitr::opts_chunk$set(root.dir = wd)
+simplified_path <- file.path(wd,"..","data-simplified")
+```
+
+## Data Import
+```{r}
+knitr::opts_chunk$set(root.dir = wd)
+#data <- read.csv2(file = file.path(wd,"int_total_graph1.csv"), header = TRUE)
+graph_1 <- read.csv2(file = file.path(simplified_path, "graph_1.csv"), header = TRUE, sep = ";") %>% 
+                      mutate(date_posix = as.POSIXct(x = date_posix, format = "%Y-%m-%d %H:%M:%S"))
+```
+
+## Graph build
+```{r}
+begin_date <- as.POSIXct("2009-07-06 00:00:00")
+end_date <- as.POSIXct("2009-09-28 00:00:00")
+time_spent <- end_date - begin_date
+n_subdivisions <- as.integer(time_spent) * 24 * 60 * 2 ## Time spent * hours * minutes * 2 (number of time subdivisions)
+```
+
+
+```{r}
+# interactions_tot <- data.frame(from = NA, to = NA, time = NA)
+# 
+# for(t in 1:n_subdivisions){ 
+#   interactions_t <- graph_1 %>%
+#     filter(date_posix <= begin_date + (t-1)*30 & date_posix + length >= begin_date + t*30) %>%
+#     mutate(time = t) %>%
+#     select(from, to, time)
+#   
+#   if (dim(interactions_t)[1]!= 0){
+#   interactions_tot <- interactions_tot %>% bind_rows(interactions_t)
+#   }
+# }
+```
+
+
+## Test parralel
+```{r}
+sourceCpp(file.path(wd,"..","cpp","test-paralell-graph.cpp"))
+# Call the parallel function
+```
+
+
+```{r}
+interactions_tot <- NULL
+interactions_tot <- parallelInteractions(date_posix = graph_1$date_posix,
+                                         length = graph_1$length,
+                                         from = graph_1$from,
+                                         to = graph_1$to,
+                                         begin_date = begin_date,
+                                         n_subdivisions = 400)
+
+
+# Line 31cannot convert 'double' to 'const char*'
+# Line 41cannot convert 'std::__cxx11::basic_string<char>' to 'const char*'
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
