@@ -55,7 +55,7 @@ n_subdivisions <- as.integer(time_spent) * 24 * 60 * 2 ## Time spent * hours * m
 
 ## Test parralel
 ```{r}
-sourceCpp(file.path(wd,"..","cpp","test-paralell-graph.cpp"))
+sourceCpp(file.path(wd,"..","cpp","test-parallel.cpp"))
 # Call the parallel function
 ```
 
