@@ -14,7 +14,8 @@ library(readxl)
 ```{r}
 wd <- getwd()
 knitr::opts_chunk$set(root.dir = wd)
-observed_path <- file.path(wd,"..","data-observed")
+observed_path <- file.path(wd,"..", "data", "data-observed")
+simplified_path <- file.path(wd,"..", "data", "data-simplified")
 
 ## xlsx files
 cat_groupings <- read_excel(path = file.path(observed_path,"cat_groupings.xlsx"), col_names= TRUE)
@@ -33,21 +34,21 @@ chosen_ward <- "Menard 1" ## Ward of our choice
 
 
 admission <- filter(toy_admission, ward == chosen_ward)
-write.csv2(admission, file = file.path(wd, "..", "data-simplified", "admission.csv"), sep = ";", row.names = FALSE)
+write.csv2(admission, file = file.path(simplified_path, "admission.csv"), sep = ";", row.names = FALSE)
 
 agenda <- filter(toy_agenda, ward == chosen_ward)
-write.csv2(agenda, file = file.path(wd, "..", "data-simplified", "agenda.csv"), sep = ";", row.names = FALSE)
+write.csv2(agenda, file = file.path(simplified_path, "agenda.csv"), sep = ";", row.names = FALSE)
 
 mat_ctc <- filter(toy_mat_ctc, from %in% admission$id & to %in% admission$id) ## Both induviduals must be from the same ward
-write.csv2(mat_ctc, file = file.path(wd, "..", "data-simplified", "mat_ctc.csv"), sep = ";", row.names = FALSE)
+write.csv2(mat_ctc, file = file.path(simplified_path, "mat_ctc.csv"), sep = ";", row.names = FALSE)
 ```
 
 
 ## Sorting the synthetic graphs according to our assumptions
 ```{r}
-synthetic_path <- file.path(wd, "..", "data-synthetic-graphs")
+synthetic_path <- file.path(wd, "..", "data", "data-synthetic-graphs")
 list_graph <- list.files(path = file.path(synthetic_path))
-dir.create(file.path(wd,"..", "data-simplified"))
+dir.create(file.path(wd,"..", "data", "data-simplified"))
 
 for (i in seq_along(list_graph)){
   index <- gsub("[^0-9]", "", list_graph[i])
@@ -55,7 +56,7 @@ for (i in seq_along(list_graph)){
                       from %in% admission$id & to %in% admission$id) %>% 
                       mutate(date_posix = as.POSIXct(date_posix))
   
-  write.csv2(df, file = file.path(wd, "..", "data-simplified", paste0("graph_", index, ".csv")), sep = ";", row.names = FALSE)
+  write.csv2(df, file = file.path(wd, "..", "data", "data-simplified", paste0("graph_", index, ".csv")), sep = ";", row.names = FALSE)
 }
 
 
