@@ -1,4 +1,4 @@
----
+*---
 title: "Untitled"
 author: "Olivier GAUFRÈS"
 date: "2024-04-17"
@@ -10,6 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
+wd <- getwd()
+knitr::opts_chunk$set(root.dir = wd)
 library(openxlsx)
 library(here)
 library(dplyr)
@@ -18,29 +20,28 @@ library(igraph)
 library(ggnetwork)
 library(ggtext)
 library(cowplot)
-library(RColorBrewer)
 
 ## Functions for graph analysis (https://github.com/qleclerc/network_algorithm/)
 ## Following script based on https://github.com/qleclerc/network_algorithm/blob/main/analysis/fig1.R
-source(here::here("R", "helper_functions.r"))
+source(file.path("helper_functions.R"))
 
 pal = brewer.pal(6, "Set2")
 ```
 
 ## Data import
 ```{r}
-adm_data = read.csv(here::here("data-observed", "toy_admission.csv"), sep=";") %>%
+adm_data = read.csv(file.path(wd, "..", "..", "data","data-observed", "toy_admission.csv"), sep=";") %>%
   select(id, hospitalization, cat, ward)
 adm_data$cat[adm_data$cat == ""] = adm_data$hospitalization[adm_data$cat == ""]
 adm_data = adm_data[,c(1,3,4)] %>%
   distinct()
-eq_table = openxlsx::read.xlsx(here::here("data-observed", "cat_groupings.xlsx")) %>%
+eq_table = openxlsx::read.xlsx(file.path(wd, "..", "..","data","data-observed", "cat_groupings.xlsx")) %>%
   select(cat, cat_ag)
 adm_data = adm_data %>%
   left_join(eq_table, by = "cat") %>%
   mutate(staff = grepl("PE-", id))
 
-data = read.csv2(here::here("data-simplified", "graph_1.csv"))
+data = read.csv2(file.path(wd, "..", "..","data","data-simplified", "graph_1.csv"))
 
 graph_data = data %>%
   mutate(date_posix = as_datetime(date_posix)) %>%
@@ -264,7 +265,7 @@ plot_grid(pa,
           plot_grid(pb,pc,pd,nrow=1, labels = c("b)", "c)", "d)"), hjust = 0),
           pe, rel_heights = c(1,0.7,0.5), ncol = 1, labels = c("a)", "", "e)"), hjust = 0)
 
-ggsave(here::here("Figures", "fig1.png"), height = 12, width = 10)
+ggsave(file.path(wd, "..", "..", "Figures", "fig1.png"), height = 12, width = 10)
 
 ```
 
