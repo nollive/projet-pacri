@@ -10,6 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(readxl)
 library(dplyr)
 library(lubridate)
+library(ggplot2)
 ```
 
 ## File paths
@@ -36,10 +37,12 @@ simplified_path <- file.path(wd, "..", "data", "data-simplified")
 expanded_path <- file.path(wd,"..", "data","data-expanded")
 
 admission <- read.csv2(file = file.path(simplified_path, "admission.csv"))
+
 id_individual <- admission %>% distinct(id)
 
 graph_1 <- read.csv2(file = file.path(simplified_path, "graph_1.csv"), header = TRUE, sep = ";") %>% 
-                      mutate(date_posix = as.POSIXct(x = date_posix, format = "%Y-%m-%d %H:%M:%S"))
+                      mutate(date_posix = format(as.POSIXct(date_posix, tz="GMT"), format="%Y-%m-%d %H:%M:%S"))
+
 
 #graph_tot <- read.csv2(file = file.path(expanded_path,"graph-1-int-1-to-end-R.csv"), header = TRUE)
 ```
@@ -70,34 +73,99 @@ nrow(k)/nrow(graph_1)
 
 ```{r}
 graph_1_nuit <- graph_1  %>%
-  filter(hour(graph_1$date_posix) <= 5) %>%
+  filter(hour(graph_1$date_posix) <= 4) %>%
   filter(length >= 300)
 ```
 
 
 ```{r}
+## MENARD 1 HAS 28 BEDS
+n_beds <- 28
+
 tot <- NULL
 ## Nombre d'interaction minimales/maximales par jour --> cohérent avec le nombre de lits :)
 for (i in 1:24){
-  temp <- graph_1  %>% filter(hour(graph_1$date_posix) <=  5) %>%
+  temp <- graph_1  %>% filter(hour(graph_1$date_posix) <=  4) %>%
   filter (length >= 60 * 5 * i) %>%
   group_by(date(date_posix)) %>%
   summarise(count = n(), count_distinct = length(unique(c(from, to)))) %>%
-  summarise(min_count = min(count), max_count = max(count) ,min_distinct = min(count_distinct), max_distinct = max(count_distinct))
+  summarise(min_count = min(count),
+            max_count = max(count),
+            min_distinct = min(count_distinct),
+            max_distinct = max(count_distinct),
+            count_under = sum((count_distinct) < n_beds))
   
-  temp$time_night_s <- 60 * 5* i
+  temp$time_night_s <- 60 * 5 * i
   temp$time_night_min <- i * 5
   tot <- bind_rows(tot, temp)
 }
+tot <- tot %>% select(time_night_min, min_count, max_count, min_distinct, max_distinct,count_under)
+
+
+## ELBOW RULE TO FIND TIME
+
+ggplot(data = tot) +
+  geom_point(mapping = aes(x = time_night_min, y = min_count, color = "Minimum Count"), show.legend = FALSE) +
+  geom_line(mapping = aes(x = time_night_min, y = min_count), linetype = "dashed") +
+  
+  geom_point(mapping = aes(x = time_night_min, y = max_count, color = "Maximum Count"), show.legend = FALSE) +
+  geom_line(mapping = aes(x = time_night_min, y = max_count), linetype = "dashed") +
+  
+  geom_point(mapping = aes(x = time_night_min, y = min_distinct, color = "Minimum Distinct"), show.legend = FALSE) +
+  geom_line(mapping = aes(x = time_night_min, y = min_distinct), linetype = "dashed") +
+  
+  geom_point(mapping = aes(x = time_night_min, y = max_distinct, color = "Maximum Distinct"), show.legend = FALSE) +
+  geom_line(mapping = aes(x = time_night_min, y = max_distinct), linetype = "dashed") +
+  
+  scale_color_manual(values = c("Minimum Count" = "red", 
+                                 "Maximum Count" = "darkred",
+                                 "Minimum Distinct" = "blue",
+                                 "Maximum Distinct" = "darkblue")) +
+  labs( x = "Time (min)", y = "Interactions (red) & Distinct individuals (blue)") +
+  labs(title = "Interactions at night in Menard 1") +
+  theme(legend.position = "top")
+
+print(tot)
+
+## issue w/ the colors???
 
 
 ```
 
+## Filtration according to these assumptions
+```{r}
+## WE CHOOSE TO HAVE MORE INTERACTIONS THAN DISTINCT INDIVIDUALS INTERACTING
+## WE CHOOSE TO SET THE THRESHOLD OF LENGTH FOR A NIGHT INTERACTION TO 45 minutes -> 2700 seconds
+
+length_thresold <- 45 * 60
+hour_thresold <- 4
+
+## Inspection
+test_graph <- graph_1  %>%
+  filter(hour(graph_1$date_posix) <= hour_thresold) %>%
+  filter(length >= length_thresold) %>% filter( date(date_posix) == date(begin_date)) 
+
+test_unique <- unique(c(test_graph$from,test_graph$to))
+
+admission_modified <- admission %>% mutate(lastDate = ifelse(nchar(lastDate) == 0, "2999-01-01", lastDate))
+ind_present <- graph_1 %>% group_by(date(date_posix)) %>% select(-c(from,to,length,date_posix)) %>% distinct
+
+
+
+graph_1_nuit <- graph_1  %>%
+  filter(hour(graph_1$date_posix) <= hour_thresold) %>%
+  filter(length >= length_thresold)
+
+```
+
+
+
+
 
 ```{r}
 ## Inference of a possible localisation of those who interact for more than 10 mins during the night 
-graph_1_bis <- graph_1  %>% filter(hour(graph_1$date_posix) <=  5) %>%
-  filter (length >= 600) %>%
+graph_1_bis <- graph_1  %>% filter(hour(graph_1$date_posix) <=  hour_thresold) %>%
+  filter (length >= length_thresold) %>%
   group_by(date(date_posix)) %>% mutate(localisation = case_when((gsub("-.*", "", from) == "PA" & gsub("-.*", "", to) == "PE") ~ "chambrePA-from",
                                                                  (gsub("-.*", "", from) == "PE" & gsub("-.*", "", to) == "PA") ~ "chambrePA-to",
                                                                  (gsub("-.*", "", from) == "PA" & gsub("-.*", "", to) == "PA") ~ "sameroom",
@@ -105,14 +173,20 @@ graph_1_bis <- graph_1  %>% filter(hour(graph_1$date_posix) <=  5) %>%
   mutate(from_n = pmin(from,to), to_n = pmax(from, to)) %>% 
   select(-c("to","from")) 
 
-graph_1  %>% filter(hour(graph_1$date_posix) <=  5) %>%
-  filter (length >= 500) %>%
-  group_by(date(date_posix)) %>% mutate(localisation = case_when((gsub("-.*", "", from) == "PA" & gsub("-.*", "", to) == "PE") ~ "chambrePA-from",
+
+
+graph_1  %>% filter(hour(graph_1$date_posix) <=  hour_thresold) %>%
+  filter (length >= length_thresold) %>% 
+  group_by(date(date_posix)) %>%
+  mutate(localisation = case_when((gsub("-.*", "", from) == "PA" & gsub("-.*", "", to) == "PE") ~ "chambrePA-from",
                                                                  (gsub("-.*", "", from) == "PE" & gsub("-.*", "", to) == "PA") ~ "chambrePA-to",
                                                                  (gsub("-.*", "", from) == "PA" & gsub("-.*", "", to) == "PA") ~ "sameroom",
                                                                  (gsub("-.*", "", from) == "PE" & gsub("-.*", "", to) == "PE") ~ "restroom")) %>%
   mutate(from_n = pmin(from,to), to_n = pmax(from, to)) %>% 
-  select(-c("to","from")) %>% ungroup() %>% group_by(localisation) %>% summarise()
+  select(-c("to","from")) %>%
+  ungroup() %>%
+  group_by(localisation) %>%
+  summarise()
 
 
 

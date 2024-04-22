@@ -27,7 +27,7 @@ mat_ctc <- read.csv2(file = file.path(simplified_path, "mat_ctc.csv"), header = 
 
 #Graph chosen (TEMPORARY)
 graph_1 <- read.csv2(file = file.path(simplified_path, "graph_1.csv"), header = TRUE, sep = ";") %>% 
-                      mutate(date_posix = as.POSIXct(x = date_posix, format = "%Y-%m-%d %H:%M:%S"))
+                      mutate(date_posix = format(as.POSIXct(date_posix, tz="GMT"), format="%Y-%m-%d %H:%M:%S")) ## TO KEEP THE 00:00:00
 ```
 
 
