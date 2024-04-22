@@ -1,4 +1,11 @@
 .Rproj.user
 .Rhistory
 .RData
-.Ruserdata
+.Ruserdata 
+not-relevant
+misc
+figures
+*.jpg
+*.png
+*.csv
+.vscode

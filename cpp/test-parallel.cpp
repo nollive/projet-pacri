@@ -5,22 +5,22 @@
 using namespace Rcpp;
 using namespace RcppParallel;
 
-struct InteractionsWorker : public Worker {
+struct InteractionsWorker : public RcppParallel::Worker {
   // Input data
-  const NumericVector date_posix;
-  const NumericVector length;
-  const CharacterVector from;
-  const CharacterVector to;
+  const Rcpp::NumericVector date_posix;
+  const Rcpp::NumericVector length;
+  const Rcpp::CharacterVector from;
+  const Rcpp::CharacterVector to;
   const double begin_date;
   const int n_subdivisions;
   
   // Output data
-  std::vector<std::string> output_from;
-  std::vector<std::string> output_to;
-  std::vector<int> time;
+  Rcpp::CharacterVector output_from;
+  Rcpp::CharacterVector output_to;
+  Rcpp::NumericVector time;
   
   // Constructor
-  InteractionsWorker(const NumericVector date_posix, const NumericVector length, const CharacterVector from, const CharacterVector to, const double begin_date, const int n_subdivisions)
+  InteractionsWorker(const Rcpp::NumericVector date_posix, const Rcpp::NumericVector length, const Rcpp::CharacterVector from, const Rcpp::CharacterVector to, const double begin_date, const int n_subdivisions)
     : date_posix(date_posix), length(length), from(from), to(to), begin_date(begin_date), n_subdivisions(n_subdivisions) {}
   
   // Parallel function
@@ -32,10 +32,10 @@ struct InteractionsWorker : public Worker {
         double interaction_start = date_posix[j];
         double interaction_end = date_posix[j] + length[j];
         if (interaction_start <= t_begin && interaction_end >= t_end) {
-            // Rprintf("as<std::string>(from[j]).c_str(): %s\n",as<std::string>(from[j]).c_str());
-            // Rprintf("as<std::string>(to[j]).c_str(): %s\n",as<std::string>(to[j]).c_str());
-            output_from.push_back(Rcpp::as<std::string>(from[j]));
-            output_to.push_back(Rcpp::as<std::string>(to[j]));
+            // output_from.push_back(Rcpp::as<std::string>(from[j]));
+            // output_to.push_back(Rcpp::as<std::string>(to[j])); 
+            output_from.push_back(from[j]);
+            output_to.push_back(to[j]); 
             time.push_back(i + 1);
         }
       }
@@ -44,14 +44,13 @@ struct InteractionsWorker : public Worker {
 };
 
 // [[Rcpp::export]]
-DataFrame parallelInteractions(NumericVector date_posix, NumericVector length, CharacterVector from, CharacterVector to, double begin_date, int n_subdivisions) {
+DataFrame parallelInteractions(Rcpp::NumericVector date_posix, Rcpp::NumericVector length, Rcpp::CharacterVector from, Rcpp::CharacterVector to, double begin_date, int n_subdivisions) {
   // Create worker
-  int num_workers = 2;
-  int chunk_size = (n_subdivisions + num_workers - 1) / num_workers;
+  // int num_workers = 2; // temporary
+  // int chunk_size = (n_subdivisions + num_workers - 1) / num_workers; // distribute the work load
   InteractionsWorker worker(date_posix, length, from, to, begin_date, n_subdivisions);
   
-  // Parallel execution
-  parallelFor(0, n_subdivisions, worker, chunk_size);
+  parallelFor(0, n_subdivisions, worker);
   
   // Combine results
   return DataFrame::create(_["from"] = wrap(worker.output_from),
