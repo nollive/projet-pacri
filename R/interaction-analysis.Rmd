@@ -17,7 +17,10 @@ library(ggplot2)
 ```{r}
 wd <- getwd()
 knitr::opts_chunk$set(root.dir = wd)
-simplified_path <- file.path(wd,"..", "data","data-simplified")
+observed_path <- file.path(wd,"..", "data","data-observed")
+synthetic_path <- file.path(wd, "..", "data", "data-synthetic-graphs")
+simplified_path <- file.path(wd, "..", "data", "data-simplified")
+expanded_path <- file.path(wd,"..", "data","data-expanded")
 ```
 
 ## Graph build
@@ -30,18 +33,17 @@ n_subdivisions <- as.integer(time_spent) * 24 * 60 * 2 ## Time spent * hours * m
 
 ## Data import
 ```{r}
-knitr::opts_chunk$set(root.dir = wd)
-observed_path <- file.path(wd,"..", "data","data-observed")
-synthetic_path <- file.path(wd, "..", "data", "data-synthetic-graphs")
-simplified_path <- file.path(wd, "..", "data", "data-simplified")
-expanded_path <- file.path(wd,"..", "data","data-expanded")
-
 admission <- read.csv2(file = file.path(simplified_path, "admission.csv"))
+## NA when the individual is still in the hospital --> we fill these NAs
+admission_modified <- admission %>% mutate(lastDate = ifelse(nchar(lastDate) == 0, "2999-01-01", lastDate))
+
 
 id_individual <- admission %>% distinct(id)
 
 graph_1 <- read.csv2(file = file.path(simplified_path, "graph_1.csv"), header = TRUE, sep = ";") %>% 
                       mutate(date_posix = format(as.POSIXct(date_posix, tz="GMT"), format="%Y-%m-%d %H:%M:%S"))
+
+graph_1 <- graph_1 %>% filter(date_posix >= begin_date) %>% filter(date_posix <= end_date)
 
 
 #graph_tot <- read.csv2(file = file.path(expanded_path,"graph-1-int-1-to-end-R.csv"), header = TRUE)
@@ -105,16 +107,16 @@ tot <- tot %>% select(time_night_min, min_count, max_count, min_distinct, max_di
 ## ELBOW RULE TO FIND TIME
 
 ggplot(data = tot) +
-  geom_point(mapping = aes(x = time_night_min, y = min_count, color = "Minimum Count"), show.legend = FALSE) +
+  geom_point(mapping = aes(x = time_night_min, y = min_count, color = "Minimum Count"), show.legend = TRUE) +
   geom_line(mapping = aes(x = time_night_min, y = min_count), linetype = "dashed") +
   
-  geom_point(mapping = aes(x = time_night_min, y = max_count, color = "Maximum Count"), show.legend = FALSE) +
+  geom_point(mapping = aes(x = time_night_min, y = max_count, color = "Maximum Count"), show.legend = TRUE) +
   geom_line(mapping = aes(x = time_night_min, y = max_count), linetype = "dashed") +
   
-  geom_point(mapping = aes(x = time_night_min, y = min_distinct, color = "Minimum Distinct"), show.legend = FALSE) +
+  geom_point(mapping = aes(x = time_night_min, y = min_distinct, color = "Minimum Distinct"), show.legend = TRUE) +
   geom_line(mapping = aes(x = time_night_min, y = min_distinct), linetype = "dashed") +
   
-  geom_point(mapping = aes(x = time_night_min, y = max_distinct, color = "Maximum Distinct"), show.legend = FALSE) +
+  geom_point(mapping = aes(x = time_night_min, y = max_distinct, color = "Maximum Distinct"), show.legend = TRUE) +
   geom_line(mapping = aes(x = time_night_min, y = max_distinct), linetype = "dashed") +
   
   scale_color_manual(values = c("Minimum Count" = "red", 
@@ -135,21 +137,42 @@ print(tot)
 ## Filtration according to these assumptions
 ```{r}
 ## WE CHOOSE TO HAVE MORE INTERACTIONS THAN DISTINCT INDIVIDUALS INTERACTING
-## WE CHOOSE TO SET THE THRESHOLD OF LENGTH FOR A NIGHT INTERACTION TO 45 minutes -> 2700 seconds
+## WE CHOOSE TO SET THE THRESHOLD OF LENGTH FOR A NIGHT INTERACTION TO 40 minutes -> 2400 seconds
 
-length_thresold <- 45 * 60
+length_thresold <- 40 * 60
 hour_thresold <- 4
 
-## Inspection
+## Inspection (for 1 day = begin_date)
 test_graph <- graph_1  %>%
   filter(hour(graph_1$date_posix) <= hour_thresold) %>%
   filter(length >= length_thresold) %>% filter( date(date_posix) == date(begin_date)) 
 
-test_unique <- unique(c(test_graph$from,test_graph$to))
+## Nb of interactions during the night & distinct individuals involved
+print (graph_1  %>%
+  filter(hour(graph_1$date_posix) <= hour_thresold) %>%
+  filter(length >= length_thresold) %>% filter( date(date_posix) == date(begin_date)) %>%
+  group_by(date(date_posix)) %>%
+  summarise(count = n(), count_distinct = length(unique(c(from, to)))))
 
-admission_modified <- admission %>% mutate(lastDate = ifelse(nchar(lastDate) == 0, "2999-01-01", lastDate))
-ind_present <- graph_1 %>% group_by(date(date_posix)) %>% select(-c(from,to,length,date_posix)) %>% distinct
 
+id_unique <- sort(unique(c(test_graph$from,test_graph$to)))
+
+
+## INDIVIDUALS IN THE WARD ACCORDING TO ADMISSION DATA
+id_present <- admission_modified %>% filter(firstDate <= begin_date & lastDate >= begin_date + days(1)) %>% distinct(id) %>% filter(substr(id,1,2) == "PA")
+
+date_distinct <- graph_1 %>% group_by(date(date_posix)) %>% select(-c(from,to,length,date_posix)) %>% distinct()
+
+interaction_list <- list()
+
+graph_1 %>% filter(id == "PA-001-LAM") %>% filter(date_posix <= begin_date )
+
+
+
+for (ide in test_unique) {
+df_id_time <- test_graph[test_graph$from == ide | test_graph$to == ide, ]
+interaction_list[[paste0("int_", ide)]] <- df_id_time
+}
 
 
 graph_1_nuit <- graph_1  %>%
