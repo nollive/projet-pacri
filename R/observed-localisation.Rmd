@@ -25,8 +25,8 @@ expanded_path <- file.path(wd,"..", "data","data-expanded")
 
 ## i-Bird study data
 ```{r}
-begin_date <- as.POSIXct("2009-07-06 00:00:00")
-end_date <- as.POSIXct("2009-09-28 00:00:00")
+begin_date <- as.POSIXct("2009-07-06 00:00:00", tz="GMT")
+end_date <- as.POSIXct("2009-09-28 00:00:00", tz="GMT")
 time_spent <- end_date - begin_date
 n_subdivisions <- as.integer(time_spent) * 24 * 60 * 2 ## Time spent * hours * minutes * 2 (number of time subdivisions)
 ```
@@ -52,10 +52,10 @@ data <- read.csv2(file = file.path(simplified_path, "mat_ctc.csv"), header = TRU
                       mutate(date_posix = as.POSIXct(date_posix, tz="GMT"))
                       #mutate(date_posix = format(as.POSIXct(date_posix, tz="GMT"), format="%Y-%m-%d %H:%M:%S")) ##TEMPORARY, FIX TO AVOID YYYY-MM-DD 00:00:00 formated as YYYY-MM-DD
 
-#(as.POSIXct(max(data_observed$date_posix), tz="GMT")) - (as.POSIXct(min(data_observed$date_posix), tz="GMT"))
+
 
 ## Date range of 84 days ($time_spent)
-data <- data %>% filter(begin_date <= date_posix) %>% filter(date_posix <= end_date)
+data <- data  %>% filter(date(date_posix) <= date(end_date))%>% filter(date(date_posix) >= date(begin_date))
 ```
 
 
@@ -189,6 +189,13 @@ hour_thresold <- 5
 admission <- admission %>% mutate(room = NA)
 
 
+
+
+
+
+
+
+
 ## ALL INTERACTIONS
 for (ind in id_individual %>% filter(substr(id,1,2) == "PA") %>% pull(id)){
   #all_ind <- data %>% filter(length > length_thresold & hour(date_posix) < hour_thresold) %>% filter(from == ind | to == ind) ## SOME IND DONT HAVE INT DURING NIGHT
@@ -204,32 +211,182 @@ for (ind in id_individual %>% filter(substr(id,1,2) == "PA") %>% pull(id)){
     }
   }
 }
+```
 
 
-
+## CUMULATIVE TIME OF NIGHT INTERACTION FOR EACH INDIVIDUAL
+```{r}
+ind_NA <- list()
+df_night <- data.frame()
 for (ind in id_individual %>% filter(substr(id,1,2) == "PA") %>% pull(id)){
   night_ind <- data %>% filter((hour(date_posix) < hour_thresold | hour(date_posix) > 21)) %>% filter(from == ind | to == ind)
   night_ind <- night_ind %>%  filter(length > 2*3600)
   for (adm in seq_len(admission %>% filter(id == ind) %>% nrow())) {
     date_adm <- admission %>% filter(id == ind) %>% nth(adm) %>% pull(firstDate)
     date_departure <- admission %>% filter(id == ind) %>% nth(adm) %>% pull(lastDate)
-    assign(paste0("int_",adm), night_ind %>% filter(between(date_posix, date_adm, date_departure)))
-    #(paste0("NIGHT TIME : ", ind," -> ",adm, " nb int = ", night_ind %>% filter(between(date_posix, date_adm, date_departure) ) %>% nrow()))
     
-    #print(paste0("MEDIAN NB OF INT DURING NIGHT FOR INDIVIDUAL " , ind, " IS EQUAL TO = ", night_ind %>%
-            # filter(between(date_posix, date_adm, date_departure) ) %>%
-            # group_by(date(date_posix)) %>%
-            #   summarise(count = n()) %>%
-            #   summarise(median_count =median(count)) %>%
-            #   pull()))
+    int_ind_adm <- night_ind %>% filter(between(date_posix, date_adm, date_departure))
+    
+    int_median <- night_ind %>%
+      filter(between(date_posix, date_adm, date_departure) ) %>%
+      group_by(date(date_posix)) %>%
+      summarise(count = n()) %>%
+      summarise(median_count =median(count)) %>%
+      pull()
+    
+    unique_ind_adm <- unique(c(int_ind_adm$from,int_ind_adm$to))
+    
+    for (ind_adm in unique_ind_adm[which(unique_ind_adm != ind)]){
+      cumulated_time_ind_adm <- int_ind_adm %>%
+        filter(from == ind_adm | to == ind_adm) %>%
+        select(-c("from","to")) %>%
+        group_by(date(date_posix)) %>%
+        summarise(sum_l = sum(length))
+      ## WE MUST PUT THE ID OF IND AT FROM & ID OF IND_ADM IN TO (group_by will not work as there is from:id1, to:id2 and from:id2, to:id1)
+  
+      df_night <- bind_rows(df_night, data.frame(id1 = ind, date = cumulated_time_ind_adm$`date(date_posix)` , admis = adm, id2 = ind_adm, cumulative_length = cumulated_time_ind_adm$'sum_l'))
+    }
+    
+    
+
     
     if(night_ind %>% filter(between(date_posix, date_adm, date_departure) ) %>% nrow() == 0){
-      print(paste0("Individual id: ", ind, " has 0 interaction during night in his admission n° ", adm))
+      #print(paste0("Individual id: ", ind, " has 0 interaction during night in his admission n° ", adm))
     }
   }
 }
 
+for (ind in (df_night %>% distinct(id1) %>% pull(id1))){
+  print(paste0(ind, " :  ", df_night %>% filter(id1 == ind) %>% distinct(id2) %>% nrow()))
+  
+}
+
+##CONC
+df_night_cumulative <- df_night %>% group_by(id1) %>%  group_by(id2, .add = TRUE) %>% summarise(cum_len_id = sum(cumulative_length)) %>% ungroup()
+
+
+#View(df_night %>% filter(id1 == "PA-001-LAM"))
+#View(df_night %>% filter(id1 == "PA-001-LAM") %>% group_by(id2) %>% summarise(cum_len_id = sum(cumulative_length)) %>% ungroup())
+```
+```{r}
+all_individuals <- unique(c(df_night_cumulative$id1, df_night_cumulative$id2))
+
+# Initialiser une liste vide pour stocker les classements
+ranking_list <- list()
+
+# Boucle à travers chaque individu
+for (ind in all_individuals) {
+  # Sélectionner les lignes où l'individu est impliqué
+  interactions <- df_night_cumulative[df_night_cumulative$id1 == ind | df_night_cumulative$id2 == ind, ]
+  # Calculer le temps total passé avec chaque individu
+  total_time <- aggregate(cum_len_id ~ ifelse(id1 == ind, id2, id1), data = interactions, sum)
+  # Renommer les colonnes pour plus de clarté
+  names(total_time) <- c("other_individual", "total_time_with_individual")
+  # Trier les individus par temps passé
+  total_time <- total_time[order(-total_time$total_time_with_individual), ]
+  # Ajouter le classement à la liste
+  ranking_list[[as.character(ind)]] <- total_time
+}
+print(ranking_list[["PA-008-SLP"]])
+```
+
+
+
+
+
+```{r}
+# Function to perform Stable Marriage with Incomplete Lists
+stable_marriage_incomplete <- function(rankings_list) {
+    # Extracting unique individuals
+    individuals <- unique(unlist(lapply(rankings_list, `[[`, "other_individual")))
+    
+    # Creating preference matrices for both sets of individuals
+    prefs1 <- sapply(individuals, function(individual) {
+        prefs <- unlist(lapply(rankings_list, function(df) {
+            df[df$other_individual == individual, "total_time_with_individual"]
+        }))
+        names(prefs) <- unlist(lapply(rankings_list, function(df) {
+            df[df$other_individual == individual, "other_individual"]
+        }))
+        return(prefs)
+    })
+    
+    prefs2 <- prefs1
+    
+    # Applying the SMI algorithm
+    matches <- matrix(NA, nrow = length(individuals), ncol = 2)
+    for (i in 1:length(individuals)) {
+        current_individual <- individuals[i]
+        prefs <- prefs1[[i]]
+        sorted_prefs <- sort(prefs, decreasing = FALSE)
+        for (j in 1:length(sorted_prefs)) {
+            current_partner <- names(sorted_prefs)[j]
+            if (is.na(matches[i, 2])) {
+                matches[i, 1] <- current_individual
+                matches[i, 2] <- current_partner
+            } else {
+                prefs_partner <- prefs2[[which(individuals == current_partner)]]
+                if (current_individual %in% names(prefs_partner)) {
+                    if (prefs_partner[current_individual] < prefs_partner[matches[i, 1]]) {
+                        matches[i, 1] <- current_individual
+                        matches[i, 2] <- current_partner
+                    }
+                }
+            }
+        }
+    }
+    
+    return(matches)
+}
+
+# Applying the SMI algorithm to the provided data
+matches <- stable_marriage_incomplete(ranking_list)
+print(matches)
+
+```
+
+
+```{r}
+stable_marriage <- function(ranking_list) {
+  engagements <- list()
+  engaged <- vector(mode = "logical", length = length(ranking_list))
+  
+  while (!all(engaged)) {
+    proposer <- which(!engaged)[1]
+    # Sélectionner les personnes avec lesquelles il n'est pas encore engagé et qui sont classées
+    candidates <- ranking_list[[proposer]]$other_individual[ranking_list[[proposer]]$other_individual %in% names(engagements)]
+    for (candidate in candidates) {
+      if (!candidate %in% names(engagements)) {
+        engagements[[as.character(proposer)]] <- candidate
+        engagements[[as.character(candidate)]] <- proposer
+        engaged[proposer] <- TRUE
+        engaged[candidate] <- TRUE
+        break
+      } else {
+        if (which(ranking_list[[candidate]]$other_individual == proposer) < which(ranking_list[[candidate]]$other_individual == engagements[[as.character(candidate)]])) {
+          engaged[as.numeric(engagements[[as.character(candidate)]])] <- FALSE
+          engagements[[as.character(proposer)]] <- candidate
+          engagements[[as.character(candidate)]] <- proposer
+          engaged[proposer] <- TRUE
+          break
+        }
+      }
+    }
+  }
+  
+  return(engagements)
+}
+
+# Utiliser l'algorithme de mariage stable avec le classement des individus
+result <- stable_marriage(ranking_list)
+```
+
+
+
+
+```{r}
 View(data %>% filter(from == "PA-053-CHK" | to == "PA-053-CHK") %>% filter(substr(from,1,2) == "PA" & substr(to,1,2) == "PA") %>% filter((hour(date_posix) < hour_thresold | hour(date_posix) > 21))  )
+#(paste0("NIGHT TIME : ", ind," -> ",adm, " nb int = ", night_ind %>% filter(between(date_posix, date_adm, date_departure) ) %>% nrow()))
 ```
 
 
