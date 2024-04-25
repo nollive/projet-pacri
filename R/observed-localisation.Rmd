@@ -196,10 +196,10 @@ for (ind in id_individual %>% filter(substr(id,1,2) == "PA") %>% pull(id)){
   for (adm in seq_len(admission %>% filter(id == ind) %>% nrow())) {
     date_adm <- admission %>% filter(id == ind) %>% nth(adm) %>% pull(firstDate)
     date_departure <- admission %>% filter(id == ind) %>% nth(adm) %>% pull(lastDate)
-    assign(paste0("int_",adm), night_ind %>% filter(between(date_posix, date_adm, date_departure)))
-    print(paste0("ALL INTERACTIONS : ", ind," -> ",adm, " nb int = ", night_ind %>% filter(between(date_posix, date_adm, date_departure) ) %>% nrow()))
+    assign(paste0("int_",adm), all_ind %>% filter(between(date_posix, date_adm, date_departure)))
+    print(paste0("ALL INTERACTIONS : ", ind," -> ",adm, " nb int = ", all_ind %>% filter(between(date_posix, date_adm, date_departure) ) %>% nrow()))
     
-    if(night_ind %>% filter(between(date_posix, date_adm, date_departure) ) %>% nrow() == 0){
+    if(all_ind %>% filter(between(date_posix, date_adm, date_departure) ) %>% nrow() == 0){
       print(paste0("Individual id: ", ind, " has 0 interaction during his admission n° ", adm))
     }
   }

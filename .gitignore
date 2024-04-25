@@ -9,3 +9,4 @@ figures
 *.png
 *.csv
 .vscode
+.Rpackages
