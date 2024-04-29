@@ -114,7 +114,7 @@ night_data <- data %>%
 ```{r}
 tot <- NULL
 ## Range of amount of interactions happening at night + distinct individuals involved + number of days there is less than n_beds individuals interacting at night
-for (i in 1:60){
+for (i in 0:60){
   temp <- data  %>% filter(hour(data$date_posix) <=  5 | hour(data$date_posix) >= 22)  %>%
   filter (length >= 60 * 5 * i) %>%
   group_by(date(date_posix)) %>%
@@ -166,6 +166,7 @@ ggplot(data = tot[1:30,]) +
                                  "Maximum Distinct" = "darkblue")) +
   labs( x = "Time (min)", y = "Interactions (red) & Distinct individuals (blue)") +
   labs(title = "Interactions at night in Menard 1") +
+  scale_y_continuous(trans = "log10") +
   theme(legend.position = "top")
 
 print(tot)
@@ -218,6 +219,7 @@ for (ind in id_individual %>% filter(substr(id,1,2) == "PA") %>% pull(id)){
 ```{r}
 ind_NA <- list()
 df_night <- data.frame()
+df_alone <- data.frame()
 for (ind in id_individual %>% filter(substr(id,1,2) == "PA") %>% pull(id)){
   night_ind <- data %>% filter((hour(date_posix) < hour_thresold | hour(date_posix) > 21)) %>% filter(from == ind | to == ind)
   night_ind <- night_ind %>%  filter(length > 2*3600)
@@ -242,16 +244,13 @@ for (ind in id_individual %>% filter(substr(id,1,2) == "PA") %>% pull(id)){
         select(-c("from","to")) %>%
         group_by(date(date_posix)) %>%
         summarise(sum_l = sum(length))
-      ## WE MUST PUT THE ID OF IND AT FROM & ID OF IND_ADM IN TO (group_by will not work as there is from:id1, to:id2 and from:id2, to:id1)
   
       df_night <- bind_rows(df_night, data.frame(id1 = ind, date = cumulated_time_ind_adm$`date(date_posix)` , admis = adm, id2 = ind_adm, cumulative_length = cumulated_time_ind_adm$'sum_l'))
     }
-    
-    
 
-    
     if(night_ind %>% filter(between(date_posix, date_adm, date_departure) ) %>% nrow() == 0){
       #print(paste0("Individual id: ", ind, " has 0 interaction during night in his admission n° ", adm))
+      df_alone <- bind_rows(df_alone, dataframe(id1 = ind, status = "alone"))
     }
   }
 }
@@ -268,6 +267,11 @@ df_night_cumulative <- df_night %>% group_by(id1) %>%  group_by(id2, .add = TRUE
 #View(df_night %>% filter(id1 == "PA-001-LAM"))
 #View(df_night %>% filter(id1 == "PA-001-LAM") %>% group_by(id2) %>% summarise(cum_len_id = sum(cumulative_length)) %>% ungroup())
 ```
+
+
+
+
+
 ```{r}
 all_individuals <- unique(c(df_night_cumulative$id1, df_night_cumulative$id2))
 
@@ -287,6 +291,8 @@ for (ind in all_individuals) {
   # Ajouter le classement à la liste
   ranking_list[[as.character(ind)]] <- total_time
 }
+
+#Example
 print(ranking_list[["PA-008-SLP"]])
 ```
 
@@ -294,56 +300,7 @@ print(ranking_list[["PA-008-SLP"]])
 
 
 
-```{r}
-# Function to perform Stable Marriage with Incomplete Lists
-stable_marriage_incomplete <- function(rankings_list) {
-    # Extracting unique individuals
-    individuals <- unique(unlist(lapply(rankings_list, `[[`, "other_individual")))
-    
-    # Creating preference matrices for both sets of individuals
-    prefs1 <- sapply(individuals, function(individual) {
-        prefs <- unlist(lapply(rankings_list, function(df) {
-            df[df$other_individual == individual, "total_time_with_individual"]
-        }))
-        names(prefs) <- unlist(lapply(rankings_list, function(df) {
-            df[df$other_individual == individual, "other_individual"]
-        }))
-        return(prefs)
-    })
-    
-    prefs2 <- prefs1
-    
-    # Applying the SMI algorithm
-    matches <- matrix(NA, nrow = length(individuals), ncol = 2)
-    for (i in 1:length(individuals)) {
-        current_individual <- individuals[i]
-        prefs <- prefs1[[i]]
-        sorted_prefs <- sort(prefs, decreasing = FALSE)
-        for (j in 1:length(sorted_prefs)) {
-            current_partner <- names(sorted_prefs)[j]
-            if (is.na(matches[i, 2])) {
-                matches[i, 1] <- current_individual
-                matches[i, 2] <- current_partner
-            } else {
-                prefs_partner <- prefs2[[which(individuals == current_partner)]]
-                if (current_individual %in% names(prefs_partner)) {
-                    if (prefs_partner[current_individual] < prefs_partner[matches[i, 1]]) {
-                        matches[i, 1] <- current_individual
-                        matches[i, 2] <- current_partner
-                    }
-                }
-            }
-        }
-    }
-    
-    return(matches)
-}
 
-# Applying the SMI algorithm to the provided data
-matches <- stable_marriage_incomplete(ranking_list)
-print(matches)
-
-```
 
 
 ```{r}
