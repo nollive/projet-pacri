@@ -9,6 +9,11 @@ using namespace Rcpp;
 
 // STRUCTURES 
 
+struct lambda_c {
+    id individual;
+    double lambda;
+}
+
 struct graph {
     graph graph;
 };
@@ -40,13 +45,16 @@ struct environment {
 struct status {
     id individual;
     int status;
+    //double length_infection; total db for infection then splice?
 };
+
+struct visited
 
 // Fonctions
 
 interaction Update_interaction(
     graph graph,
-     int subdivision
+    int subdivision
 );
 
 interaction_loc Associate_interaction(
@@ -60,20 +68,21 @@ localisation Update_localisation(
 
 environment Update_environment(
     environment env_prev,
-    localisation loc_current,
-    status status_prev,
-    double mu,
-    double nu
+    const localisation loc_current,
+    const status status_prev,
+    const double mu,
+    const double nu,
+    const integer dt
 );
 
 status Update_status(
-    localisation loc_current,
-    environment env_current,
-    infected infected_prev,
-    double alpha,
-    double beta,
-    double epsilon,
-    integer dt
+    const localisation loc_current,
+    const environment env_current,
+    const infected infected_prev,
+    const double alpha,
+    const double beta,
+    const double epsilon,
+    const integer dt
 );
 
 
