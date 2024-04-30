@@ -1,0 +1,335 @@
+---
+title: "model-temporary"
+author: "Olivier GAUFRÈS"
+date: "2024-04-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(dplyr)
+```
+
+## DATA IMPORT (TEMPORARY)
+```{r}
+wd <- getwd()
+knitr::opts_chunk$set(root.dir = wd)
+simplified_path <- file.path(wd,"..", "data","data-simplified")
+
+## xlsx files
+cat_groupings <- read_excel(path = file.path(wd,"..", "data","data-observed","cat_groupings.xlsx"), col_names= TRUE)
+
+## csv files
+admission <- read.csv2(file = file.path(simplified_path, "admission.csv"), header = TRUE, sep = ";")
+agenda <- read.csv2(file = file.path(simplified_path, "agenda.csv"), header = TRUE, sep = ";")
+mat_ctc <- read.csv2(file = file.path(simplified_path, "mat_ctc.csv"), header = TRUE, sep = ";")
+
+#Graph chosen (TEMPORARY)
+graph_1 <- read.csv2(file = file.path(simplified_path, "graph_1.csv"), header = TRUE, sep = ";") %>% 
+                      mutate(date_posix = format(as.POSIXct(date_posix, tz="GMT"), format="%Y-%m-%d %H:%M:%S")) ## TO KEEP THE 00:00:00
+```
+
+
+## Model
+```{r}
+####################
+## Initialization ##
+####################
+
+
+## Dimensions
+
+begin_date <- as.POSIXct("2009-07-06 00:00:00")
+end_date <- as.POSIXct("2009-09-28 00:00:00")
+time_spent <- end_date - begin_date
+
+n_individuals <- as.integer(admission %>%
+  distinct(id) %>%
+  count())
+
+n_subdivisions <- as.integer(time_spent) * 24 * 60 * 2 ## Time spent * hours * minutes * 2 (number of time subdivisions)
+
+
+## Room environment stores the viral load of each room
+## Assuming each patient is in an individual room
+
+rooms <- admission %>%
+  distinct(id) %>%
+  filter(substr(id, 1, 2) == "PA") %>%
+  mutate(room = as.factor(row_number())) %>%
+  mutate(id_room = as.factor(row_number())) %>%
+  select(id_room,room, id)
+
+rooms <- rooms %>%
+  bind_rows(data.frame(room = "Restroom", id = "PE", id_room = as.factor(nrow(rooms) + 1))) %>%
+  bind_rows(data.frame(room = "Corridor", id = "ALL", id_room = as.factor(nrow(rooms) + 2)))
+
+
+
+environment <- rooms %>%
+  distinct(room) %>%
+  mutate(env = 0) %>%
+  mutate(id_room = rooms$id_room) %>%
+  select(room, id_room, env)
+
+
+## Individual location stores, for every individual, the location where happened his last interaction (and the location he will be after -> might be deleted after, depends on the structure of code below)
+## Initially, every patient is in his/her room & HCW in HCW's rest room
+individual_location <- admission %>%
+  distinct(id) %>%
+  mutate(previous_location = NA, future_location = NA) %>%
+  select(id, previous_location, future_location)
+
+for (i in individual_location$id){
+  if (substr(i,1,2) == "PA"){
+    individual_location[individual_location$id == i, "previous_location"] <- rooms[rooms$id == i, "room"]
+  }
+  else{
+    individual_location[individual_location$id == i, "previous_location"] <- "Restroom"
+  }
+}
+
+
+synthetic_path <- file.path(wd, "..", "data-synthetic-graphs")
+list_graph <- list.files(path = file.path(synthetic_path))
+
+
+## Create our 2D array I containing the information whether our individual is susceptible (0), infected (1), recovered (2) or not in the ward anymore (-1)
+
+# for (i in seq_along(list_graph)){
+#   index <- gsub("[^0-9]", "", list_graph[i]) ## Graphs are not listed in order
+#   assign(paste0("I_", index), 
+#          array(data = 0, 
+#                dim = c(n_individuals, n_subdivisions+1), 
+#                dimnames = list(paste0("Individual_", 1:n_individuals), paste0("Status_for_Time_", 0:n_subdivisions))))
+# }
+
+
+# TEMPORARY
+I_1 <- array(data = 0, 
+             dim = c(n_individuals, n_subdivisions+1),
+             dimnames = list(paste0("Individual_", 1:n_individuals), paste0("Status_for_Time_", 0:n_subdivisions)))
+# TEMPORARY
+
+
+```
+
+
+
+## Update of the model for each subdivision of time
+```{r}
+
+#TEMPORARY
+## Assigning the index patient --> TEMPORARY, need to be in args!
+I_1[1,1] <- 1 #TEMPORARY
+distinct_admission <- admission %>% distinct(id)
+
+## VARIABLES & INFECTION RATES
+mu <- 0.01 # To define, inactivation rate
+nu <- 0.1 # To define, shedding of an individual
+alpha <- 0.05 # Background infection (visits etc)
+beta <- 0.1 # Close-contact's infection rate
+epsilon <- 0.05 # Environment's infection rate
+
+
+
+# Loop every subdivision of time (30s)
+a <-  Sys.time()
+#for (t in 1:n_subdivisions){
+for (t in 1200:1200) {
+  t1_int <- Sys.time()
+  # Get the interactions happening at the time begin_date + t*30
+   interactions <- graph_1 %>%
+    filter(date_posix <= begin_date + (t-1)*30 & date_posix + length >= begin_date + t*30)
+  
+  t2_int <- Sys.time()
+  
+  
+  ##############################
+  ## Update the localisations ##
+  ##############################
+  t1_loc <- Sys.time()
+  
+  ############### TEMPORARY ######################## (not working because an individual can have simultaneous contacts with PA AND PE respectfully, the localisation will be wrong)
+  # For the individuals interacting at t
+  if (dim(interactions)[1] != 0){
+    for (i in 1:dim(interactions)[1]) {
+      
+      ## Interactions between HCW & Patients take place in patient's room (FROM = PA AND TO = PE)
+      if  (substr(interactions[i, "from"], 1, 2) == "PA" && substr(interactions[i, "to"], 1, 2) == "PE") { 
+        # Room where the interaction takes place
+        room_int <- rooms %>%filter(id == interactions[i, "from"]) %>% pull(room)
+        # Update the localisation of PA & PE
+        individual_location <- individual_location %>%
+          mutate(future_location = ifelse(id == interactions[i, "from"], room_int, future_location)) %>%
+          mutate(future_location = ifelse(id == interactions[i, "to"], room_int, future_location))
+      }
+      ## Interactions between HCW & Patients take place in patient's room (FROM = PE AND TO = PA)
+      if  (substr(interactions[i, "from"], 1, 2) == "PE" && substr(interactions[i, "to"], 1, 2) == "PA") {
+        # Room where the interaction takes place
+        room_int <- rooms %>%filter(id == interactions[i, "to"]) %>% pull(room)
+        # Update the localisations of PA & PE
+        individual_location <- individual_location %>%
+          mutate(future_location = ifelse(id == interactions[i, "from"], room_int, future_location)) %>%
+          mutate(future_location = ifelse(id == interactions[i, "to"], room_int, future_location))
+      }
+        
+      
+      ## Interactions between patients take place in the corridor
+      if  (substr(interactions[i, "from"], 1, 2) == "PA" && substr(interactions[i, "to"], 1, 2) == "PA") { 
+        individual_location <- individual_location %>%
+          mutate(future_location = ifelse(id == interactions[i, "from"], "Corridor", future_location)) %>%
+          mutate(future_location = ifelse(id == interactions[i, "to"], "Corridor", future_location))
+      }
+      
+      
+      ## Interactions between HCW take place in the HCW's rest room
+      if  (substr(interactions[i, "from"], 1, 2) == "PE" && substr(interactions[i, "to"], 1, 2) == "PE") { 
+        individual_location <- individual_location %>%
+          mutate(future_location = ifelse(id == interactions[i, "from"], "Restroom", future_location)) %>%
+          mutate(future_location = ifelse(id == interactions[i, "to"], "Restroom", future_location))
+      }
+    }
+  }
+  
+  
+  
+  # For the individuals not interacting at t
+  id_no_int <- admission["id"] %>% filter(!(id %in% interactions[["from"]]) & !(id %in% interactions[["to"]]))
+  for (i in id_no_int$id){
+    room_assigned <- rooms %>% filter(id == i) %>% pull(room)
+    room_prev <- individual_location %>% filter(id == i) %>% pull(previous_location)
+    
+    ## Rules for patients that don't have an interaction
+    ## Patients stay in their room (thus if not in Restroom (chamber or corridor), they will go to their room)
+    if  (substr(i, 1, 2) == "PA"){
+      if (room_prev == "Restroom"){
+        individual_location <- individual_location %>% 
+          mutate(future_location = ifelse(id == i , "Corridor", future_location)) ## Should not be possible to be in HCWs room but?
+      }
+      else{
+        individual_location <- individual_location %>% 
+          mutate(future_location = ifelse(id == i , room_assigned, future_location))
+      }
+    }
+    
+    ## Rules for HCWs that don't have an interaction
+    # If at t-1, the HCW is either in the corridor/restroom, he will go/stay to the restroom and if he was in a patient's room, he will go to the corridor
+    if  (substr(i, 1, 2) == "PE"){
+      # If HCW is in a patient's room -> Corridor
+      if (room_prev <= 62 & room_prev >= 1){
+        individual_location <- individual_location %>% 
+          mutate(future_location = ifelse(id == i , "Corridor", future_location)) # TEMPORARY, SHOULD CHANGE ID OF CORRIDOR TO nb patient +1 etc
+      }
+      
+      # If HCW is in the Corridor/Restroom  -> Restroom
+      else{
+        individual_location <- individual_location %>% 
+          mutate(future_location = ifelse(id == i , "Restroom", future_location))
+      }
+    }
+  }
+  
+  t2_loc <- Sys.time()
+  ############### TEMPORARY ########################
+  
+  
+  ############################
+  ## Update the environment ##
+  ############################
+  t1_env <- Sys.time()
+  
+  
+  for (r in 1:dim(environment)[1]){
+    name_r <- environment[r,]$room
+    ind_r <- individual_location %>% filter(future_location == name_r ) # individuals in room r
+    
+    infected_r <- 0 # number of infected individuals in room r
+    
+    ## "Greedy search" -> change the structure of I?
+    for (i in seq_along(ind_r$id)){
+      if (I_1[i,t-1] == 1){
+        infected_r <- infected_r +1
+      }
+      
+    # Update the environment in room r
+    environment[r, "env"] <- max(0, environment[r, "env"] * exp(-mu) + (nu / mu) * (infected_r / nrow(ind_r)))
+    }
+  }
+  
+  t2_env <- Sys.time()
+  
+  
+  #######################
+  ## Update the status ## (at the end of the subdivision of time)
+  #######################
+  t1_status <- Sys.time()
+  
+  for (patient in 1:dim(I_1)[1]) {
+    pRec <- 0.2
+    pInf <- 0
+    env_patient <- 0
+    n_inf_int_patient <- 0
+    
+    
+    ## Susceptible (0) --> Infected (1)
+    if (I_1[patient,t-1] == 0){
+      id_check_patient <- NULL
+      n_inf_int_patient <- 0
+      id_patient <- distinct_admission$id[patient]
+      room_patient <- individual_location[individual_location$id == id_patient, "future_location"]
+      id_room_patient <- rooms[rooms$room == room_patient, "id_room"]
+      env_patient <- environment[environment$id_room == id_room_patient, "env"]
+      
+      #TEMPORARY
+      int_patient <- interactions %>% filter(rooms$id[patient] == from | rooms$id[patient] == to)
+      if(dim(int_patient)[1] != 0){
+        from_patient <- interactions %>% filter(rooms$id[patient] == from) %>% pull(to)
+        to_patient <- interactions %>% filter(rooms$id[patient] == to) %>% pull(from)
+        id_check_patient <- rbind(from_patient, to_patient)
+        for (i in id_check_patient){
+          id_check <- which(admission %>% distinct(id) %>% pull(id) == i)
+          if (I_1[id_check,t] == 1){
+            n_inf_int_patient <- n_inf_int_patient + 1
+          }
+        }
+      }
+      
+      pInf <- alpha + (beta * n_inf_int_patient) + (epsilon*env_patient)
+      print(pInf)
+      if (runif(n = 1, min = 0, max = 1) <= pInf){
+        I_1[patient,t] <- 1
+      }
+    
+    }
+      ## Infected (1) --> Recovered (2)
+    if (I_1[patient,t-1] == 1 && runif(n = 1, min = 0, max = 1) <= pRec) {
+      I_1[patient,t] <- 2
+    }  
+  } 
+  #############################
+  ## Update the localisation ##
+  #############################
+  individual_location <- individual_location %>% 
+          mutate(previous_location = future_location) %>%
+          mutate(future_location = NA)
+  
+  
+  t2_status <- Sys.time()
+}
+b <-  Sys.time()
+
+############
+## Clocks ##
+############
+sum <- as.numeric(t2_int - t1_int + t2_loc - t1_loc + t2_env - t1_env + t2_status - t1_status)
+clocks <- data.frame(description = c("Temps d'execution d'une subdivision", "Temps d'execution de la récupération des interactions", "Temps d'execution de la mise à jour des localisations", "Temps d'execution de la mise à jour de l'environnement", "Temps d'execution de la mise à jour des statuts d'infection"),
+                     time = substr(c(b-a, t2_int - t1_int, t2_loc - t1_loc, t2_env - t1_env, t2_status - t1_status), 1, 7),
+                     contribution = c(100, as.numeric((t2_int - t1_int))*100/sum, as.numeric((t2_loc - t1_loc))*100/sum, as.numeric((t2_env - t1_env))*100/sum, as.numeric((t2_status - t1_status))*100/sum)
+)
+
+print(clocks)
+```
+
+
