@@ -1,0 +1,194 @@
+---
+title: "interation-analysis"
+author: "Olivier GAUFRÈS"
+date: "2024-04-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+```
+
+## File paths
+```{r}
+wd <- getwd()
+knitr::opts_chunk$set(root.dir = wd)
+observed_path <- file.path(wd,"..", "data","data-observed")
+synthetic_path <- file.path(wd, "..", "data", "data-synthetic-graphs")
+simplified_path <- file.path(wd, "..", "data", "data-simplified")
+expanded_path <- file.path(wd,"..", "data","data-expanded")
+```
+
+## Graph build
+```{r}
+begin_date <- as.POSIXct("2009-07-06 00:00:00")
+end_date <- as.POSIXct("2009-09-28 00:00:00")
+time_spent <- end_date - begin_date
+n_subdivisions <- as.integer(time_spent) * 24 * 60 * 2 ## Time spent * hours * minutes * 2 (number of time subdivisions)
+```
+
+## Data import
+```{r}
+admission <- read.csv2(file = file.path(simplified_path, "admission.csv"))
+## NA when the individual is still in the hospital --> we fill these NAs
+admission_modified <- admission %>% mutate(lastDate = ifelse(nchar(lastDate) == 0, "2999-01-01", lastDate))
+
+
+id_individual <- admission %>% distinct(id)
+
+mat_ctc <- read.csv2(file = file.path(simplified_path, "mat_ctc.csv"), header = TRUE, sep = ";") %>% 
+                      mutate(date_posix = format(as.POSIXct(date_posix, tz="GMT"), format="%Y-%m-%d %H:%M:%S"))
+
+## Date range of 84 days
+mat_ctc <- mat_ctc %>% filter( begin_date <= date_posix) %>% filter(date_posix <= end_date)
+
+
+#graph_tot <- read.csv2(file = file.path(expanded_path,"graph-1-int-1-to-end-R.csv"), header = TRUE)
+```
+
+```{r}
+## Interaction's duration of 30sec
+k = mat_ctc %>% filter(length == 30) %>% mutate(from = gsub("-.*", "", from), to = gsub("-.*", "", to)) %>% select(-date_posix)
+print("Interaction's duration of 30sec")
+table(k$from, k$to)
+
+## Proportions of interaction of 30s in all the int
+
+print("Proportions of interaction of 30s")
+prop.table(table(k$from, k$to))
+
+
+print("Proportions of 30s int in all the int")
+print(paste0(nrow(k)/nrow(mat_ctc) * 100, " %"))
+```
+
+
+```{r}
+## Interaction's duration < 300sec
+k = mat_ctc %>% filter(length < 300) %>% mutate(from = gsub("-.*", "", from), to = gsub("-.*", "", to)) %>% select(-date_posix)
+prop.table(table(k$from, k$to))
+nrow(k)/nrow(mat_ctc)
+```
+
+```{r}
+mat_ctc_nuit <- mat_ctc  %>%
+  filter(hour(mat_ctc$date_posix) <= 4) %>%
+  filter(length >= 300)
+
+mat_ctc_nuit %>% filter(substr(from, 1, 2) == "PE" | substr(to, 1, 2) == "PE" )
+```
+
+
+```{r}
+## MENARD 1 HAS 28 BEDS
+n_beds <- 28
+
+tot <- NULL
+## Nombre d'interaction minimales/maximales par jour --> cohérent avec le nombre de lits :)
+for (i in 1:24){
+  temp <- mat_ctc  %>% filter(hour(mat_ctc$date_posix) <=  4) %>%
+  filter (length >= 60 * 5 * i) %>%
+  group_by(date(date_posix)) %>%
+  summarise(count = n(), count_distinct = length(unique(c(from, to)))) %>% ## change with n_distinct
+  summarise(min_count = min(count),
+            max_count = max(count),
+            min_distinct = min(count_distinct),
+            max_distinct = max(count_distinct),
+            count_under = sum((count_distinct) < n_beds))
+  
+  temp$time_night_s <- 60 * 5 * i
+  temp$time_night_min <- i * 5
+  tot <- bind_rows(tot, temp)
+}
+tot <- tot %>% select(time_night_min, min_count, max_count, min_distinct, max_distinct,count_under)
+
+
+
+
+
+
+
+
+## ELBOW RULE TO FIND TIME
+
+ggplot(data = tot) +
+  geom_point(mapping = aes(x = time_night_min, y = min_count, color = "Minimum Count"), show.legend = TRUE) +
+  geom_line(mapping = aes(x = time_night_min, y = min_count), linetype = "dashed") +
+  
+  geom_point(mapping = aes(x = time_night_min, y = max_count, color = "Maximum Count"), show.legend = TRUE) +
+  geom_line(mapping = aes(x = time_night_min, y = max_count), linetype = "dashed") +
+  
+  geom_point(mapping = aes(x = time_night_min, y = min_distinct, color = "Minimum Distinct"), show.legend = TRUE) +
+  geom_line(mapping = aes(x = time_night_min, y = min_distinct), linetype = "dashed") +
+  
+  geom_point(mapping = aes(x = time_night_min, y = max_distinct, color = "Maximum Distinct"), show.legend = TRUE) +
+  geom_line(mapping = aes(x = time_night_min, y = max_distinct), linetype = "dashed") +
+  
+  scale_color_manual(values = c("Minimum Count" = "red", 
+                                 "Maximum Count" = "darkred",
+                                 "Minimum Distinct" = "blue",
+                                 "Maximum Distinct" = "darkblue")) +
+  labs( x = "Time (min)", y = "Interactions (red) & Distinct individuals (blue)") +
+  labs(title = "Interactions at night in Menard 1") +
+  theme(legend.position = "top")
+
+print(tot)
+
+## issue w/ the colors???
+
+
+```
+
+## Filtration according to these assumptions
+```{r}
+## WE CHOOSE TO HAVE MORE INTERACTIONS THAN DISTINCT INDIVIDUALS INTERACTING
+## WE CHOOSE TO SET THE THRESHOLD OF LENGTH FOR A NIGHT INTERACTION TO 40 minutes -> 2400 seconds
+
+length_thresold <- 40 * 60
+hour_thresold <- 4
+
+## Inspection (for 1 day = begin_date)
+test_graph <- mat_ctc  %>%
+  filter(hour(mat_ctc$date_posix) <= hour_thresold) %>%
+  filter(length >= length_thresold) %>% filter( date(date_posix) == date(begin_date)) 
+
+## Nb of interactions during the night & distinct individuals involved
+print (mat_ctc  %>%
+  filter(hour(mat_ctc$date_posix) <= hour_thresold) %>%
+  filter(length >= length_thresold) %>% filter( date(date_posix) == date(begin_date)) %>%
+  group_by(date(date_posix)) %>%
+  summarise(count = n(), count_distinct = length(unique(c(from, to)))))
+
+
+id_unique <- sort(unique(c(test_graph$from,test_graph$to)))
+
+
+## INDIVIDUALS IN THE WARD ACCORDING TO ADMISSION DATA
+id_present <- admission_modified %>% filter(firstDate <= begin_date & lastDate >= begin_date + days(1)) %>% distinct(id) %>% filter(substr(id,1,2) == "PA")
+
+date_distinct <- mat_ctc %>% group_by(date(date_posix)) %>% select(-c(from,to,length,date_posix)) %>% distinct()
+
+interaction_list <- list()
+
+
+
+for (ide in test_unique) {
+df_id_time <- test_graph[test_graph$from == ide | test_graph$to == ide, ]
+interaction_list[[paste0("int_", ide)]] <- df_id_time
+}
+
+
+mat_ctc_nuit <- mat_ctc  %>%
+  filter(hour(mat_ctc$date_posix) <= hour_thresold) %>%
+  filter(length >= length_thresold)
+
+```
+
+```{r}
+#####mat_ctc %>% filter(id == "PA-001-LAM") %>% filter(date_posix <= begin_date )
+```
+
