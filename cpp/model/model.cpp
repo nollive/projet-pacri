@@ -10,23 +10,7 @@ using namespace Rcpp;
 //////////////////////////////////////////////
 // [[Rcpp::export]]
 
-interaction Update_interaction(graph graph, int subdivision){
-    // Filtration du graphe
-    return int_current;
-};
-
-
-interaction_loc Associate_interaction(
-    interaction int_current
-);
-
-localisation Update_localisation(
-    localisation loc_prev,
-    interaction_loc int_loc_current
-);
-
-
-
+// OK
 environment Update_environment_bis(
     environment env_prev,
     const localisation loc_prev,
@@ -49,10 +33,51 @@ environment Update_environment_bis(
             room.env = room.env * Rcpp:exp(- mu * dt) + n_inf * nu * dt;
         }
 
-    
-
     return env_prev; 
 }
+
+lambda_c Lambda_c (
+    lambda_c lambda_c_prev,
+    const double beta,
+    const double deltat,
+    const interaction interaction_ti,
+    const status status_ti,
+    const int ti,
+){
+    for (const auto& ind : lambda_c_prev.individual){
+        int nb_inf_r = 0;
+        list liste_ind_r = Rencontre(ind, ti);
+        for (const auto& r : liste_ind_r){
+            if (status_ti[r].status == 1){
+                nb_inf_r += 1;
+            }
+        }
+        ind.lambda = beta * dt * nb_inf_r;
+    }
+    return lambda_c_prev;
+};
+
+
+
+
+interaction Update_interaction(graph graph, int subdivision){
+    // Filtration du graphe
+    return int_current;
+};
+
+
+interaction_loc Associate_interaction(
+    interaction int_current
+);
+
+localisation Update_localisation(
+    localisation loc_prev,
+    interaction_loc int_loc_current
+);
+
+
+
+
 
 
 

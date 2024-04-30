@@ -9,6 +9,11 @@ using namespace Rcpp;
 
 // STRUCTURES 
 
+struct lambda_c {
+    id individual;
+    double lambda;
+}
+
 struct graph {
     graph graph;
 };
@@ -40,7 +45,7 @@ struct environment {
 struct status {
     id individual;
     int status;
-    double length_infection
+    //double length_infection; total db for infection then splice?
 };
 
 struct visited
