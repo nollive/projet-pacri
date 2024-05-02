@@ -10,60 +10,52 @@ using namespace Rcpp;
 // STRUCTURES 
 
 struct lambda_c {
-    id individual;
-    double lambda;
-}
-
-struct graph {
-    graph graph;
+    Rcpp::IntegerVector individual;
+    Rcpp::NumericVector lambda;
 };
 
+
+struct lambda_e {
+    Rcpp::IntegerVector individual;
+    Rcpp::NumericVector lambda;
+};
+
+
+
+struct interaction {
+    Rcpp::IntegerVector from;
+    Rcpp::IntegerVector to;
+};
+
+
+
+struct localisation {
+    Rcpp::IntegerVector individual;
+    Rcpp::IntegerVector position;
+};
+
+struct environment {
+    Rcpp::NumericVector env;
+    Rcpp::IntegerVector room;
+};
+
+struct status {
+    Rcpp::IntegerVector individual;
+    Rcpp::IntegerVector status;
+    //double length_infection; total db for infection then splice?
+};
+// delete? 
 struct id {
     std::string id;
 };
 
-struct interaction {
-    id from;
-    id to;
-};
 
-struct interaction_loc {
-    id individual;
-    int position;
-};
-
-struct localisation {
-    id individual;
-    int position;
-};
-
-struct environment {
-    double env;
-    int position;
-};
-
-struct status {
-    id individual;
-    int status;
-    //double length_infection; total db for infection then splice?
-};
-
-struct visited
 
 // Fonctions
 
 interaction Update_interaction(
-    graph graph,
-    int subdivision
-);
-
-interaction_loc Associate_interaction(
-    interaction int_current
-);
-
-localisation Update_localisation(
-    localisation loc_prev,
-    interaction_loc int_loc_current
+    Rcpp::DataFrame data,
+    int ti
 );
 
 environment Update_environment(
@@ -72,17 +64,22 @@ environment Update_environment(
     const status status_prev,
     const double mu,
     const double nu,
-    const integer dt
+    const int dt
 );
 
 status Update_status(
     const localisation loc_current,
     const environment env_current,
-    const infected infected_prev,
+    const status infected_prev,
     const double alpha,
     const double beta,
     const double epsilon,
-    const integer dt
+    const int dt
+);
+
+Rcpp::List List_encountered(
+    const int id,
+    const interaction interactions
 );
 
 
