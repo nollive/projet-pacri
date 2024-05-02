@@ -10,3 +10,4 @@ figures
 *.csv
 .vscode
 .Rpackages
+*.o

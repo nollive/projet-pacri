@@ -5,87 +5,106 @@
 #include <iostream>
 
 
-using namespace Rcpp;
+/////////////
+// STRUCTS //  
+/////////////
 
-// STRUCTURES 
+typedef struct {
+    Rcpp::IntegerVector individual;
+    Rcpp::NumericVector lambda;
+} lambda_c;
 
-struct lambda_c {
-    id individual;
-    double lambda;
-}
+typedef struct{
+    Rcpp::IntegerVector individual;
+    Rcpp::NumericVector lambda;
+} lambda_e ;
 
-struct graph {
-    graph graph;
-};
+typedef struct {
+    Rcpp::IntegerVector from;
+    Rcpp::IntegerVector to;
+}  interaction ;
 
-struct id {
-    std::string id;
-};
+typedef struct {
+    Rcpp::IntegerVector individual;
+    Rcpp::IntegerVector position;
+} localisation ;
 
-struct interaction {
-    id from;
-    id to;
-};
+typedef struct {
+    Rcpp::NumericVector env;
+    Rcpp::IntegerVector room;
+} environment ;
 
-struct interaction_loc {
-    id individual;
-    int position;
-};
+typedef struct {
+    Rcpp::IntegerVector individual;
+    Rcpp::IntegerVector status;
+} status ;
 
-struct localisation {
-    id individual;
-    int position;
-};
 
-struct environment {
-    double env;
-    int position;
-};
+///////////
+// Utils // 
+///////////
 
-struct status {
-    id individual;
-    int status;
-    //double length_infection; total db for infection then splice?
-};
+Rcpp::List List_encountered(
+    const int id,
+    const interaction interactions
+);
 
-struct visited
 
-// Fonctions
+
+////////////
+// UPDATE // 
+////////////
 
 interaction Update_interaction(
-    graph graph,
-    int subdivision
-);
-
-interaction_loc Associate_interaction(
-    interaction int_current
-);
-
-localisation Update_localisation(
-    localisation loc_prev,
-    interaction_loc int_loc_current
+    Rcpp::DataFrame data,
+    int ti,
+    Rcpp::String time,
+    const Rcpp::Datetime begin_date, // can change (apply offset of (begin_date) in data --> origin is 00-00-00 00:00:00)
+    const int dt
 );
 
 environment Update_environment(
-    environment env_prev,
-    const localisation loc_current,
-    const status status_prev,
+    environment environment_tim1,
+    const localisation& localisation_tim1,
+    const status& status_tim1,
     const double mu,
     const double nu,
-    const integer dt
+    const int dt
 );
 
 status Update_status(
-    const localisation loc_current,
-    const environment env_current,
-    const infected infected_prev,
-    const double alpha,
+    const localisation localisation_ti,
+    const environment environment_ti,
+    const status status_tim1,
     const double beta,
     const double epsilon,
-    const integer dt
+    const double nu,
+    const double mu,
+    const int dt
 );
 
 
+
+/////////
+// FOI //
+/////////
+
+lambda_c Lambda_c (
+    lambda_c lambda_c_tim1,
+    const interaction interaction_ti,
+    const status status_ti,
+    const double beta,
+    const double dt,
+    const int ti
+);
+
+lambda_e Lambda_e (
+    lambda_e lambda_e_tim1,
+    const localisation localisation_ti,
+    const environment environment_ti,
+    const double epsilon,
+    const double dt
+);
 
 
 #endif

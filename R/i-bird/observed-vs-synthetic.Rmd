@@ -18,10 +18,10 @@ library(ggplot2)
 ```{r}
 wd <- getwd()
 knitr::opts_chunk$set(root.dir = wd)
-observed_path <- file.path(wd,"..", "data","data-observed")
-synthetic_path <- file.path(wd, "..", "data", "data-synthetic-graphs")
-simplified_path <- file.path(wd, "..", "data", "data-simplified")
-expanded_path <- file.path(wd, "..", "data","data-expanded")
+observed_path <- file.path(wd,"..", "..", "data","data-observed")
+synthetic_path <- file.path(wd, "..", "..", "data", "data-synthetic-graphs")
+simplified_path <- file.path(wd, "..", "..", "data", "data-simplified")
+expanded_path <- file.path(wd, "..", "..", "data","data-expanded")
 ```
 
 ## i-Bird study data

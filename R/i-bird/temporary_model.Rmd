@@ -15,10 +15,11 @@ library(dplyr)
 ```{r}
 wd <- getwd()
 knitr::opts_chunk$set(root.dir = wd)
-simplified_path <- file.path(wd,"..", "data","data-simplified")
+simplified_path <- file.path(wd,"..", "..", "data","data-simplified")
+synthetic_path <- file.path(wd, "..", "..", "data-synthetic-graphs")
 
 ## xlsx files
-cat_groupings <- read_excel(path = file.path(wd,"..", "data","data-observed","cat_groupings.xlsx"), col_names= TRUE)
+cat_groupings <- read_excel(path = file.path(wd,"..", "..", "data","data-observed","cat_groupings.xlsx"), col_names= TRUE)
 
 ## csv files
 admission <- read.csv2(file = file.path(simplified_path, "admission.csv"), header = TRUE, sep = ";")
@@ -91,7 +92,7 @@ for (i in individual_location$id){
 }
 
 
-synthetic_path <- file.path(wd, "..", "data-synthetic-graphs")
+
 list_graph <- list.files(path = file.path(synthetic_path))
 
 
