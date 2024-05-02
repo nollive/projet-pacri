@@ -1,29 +1,14 @@
-#include <Rcpp.h>
 #include "model.h"
+#include <Rcpp.h>
+
 using namespace std;
-using namespace Rcpp;
 
 // [[Rcpp::plugins(cpp11)]]
-
-
 
 //////////////////////////////////////////////
 // [[Rcpp::export]]
 
-interaction Update_interaction(
-    Rcpp::DataFrame data,
-    int ti
-) {
-    interaction int_tim1;
-    interaction int_ti;
-
-
-    return int_ti;
-};
-
-
-// à voir sià changer (localisation avec prev et future)
-environment Update_environment_ter(
+environment Update_environment(
     environment environment_tim1,
     const localisation& localisation_tim1,
     const status& status_tim1,
@@ -45,7 +30,7 @@ environment Update_environment_ter(
     }
 
     return environment_tim1;
-};
+}
 
 
 Rcpp::List List_encountered(
@@ -63,7 +48,7 @@ Rcpp::List List_encountered(
     }
 
     return list_id;
-};
+}
 
 
 /////////
@@ -90,99 +75,60 @@ lambda_c Lambda_c (
         lambda_c_tim1.lambda[j] = beta * dt * nb_inf_r;
     }
     return lambda_c_tim1;
-};
+}
 
 lambda_e Lambda_e (
-    lambda_e lambda_e_prev,
+    lambda_e lambda_e_tim1,
     const localisation localisation_ti,
     const environment environment_ti,
     const double epsilon,
     const double dt
 ) {
-    for (int j = 0; j < lambda_e_prev.individual.size(); ++j){
-        int identifiant = lambda_e_prev.individual[j];
+    for (int j = 0; j < lambda_e_tim1.individual.size(); ++j){
+        int identifiant = lambda_e_tim1.individual[j];
         int room  = localisation_ti.position[identifiant];
         int env = environment_ti.env[room];
 
-        lambda_e_prev.lambda[j] = epsilon * dt * env;
+        lambda_e_tim1.lambda[j] = epsilon * dt * env;
     }
-    return lambda_e_prev;
-};
+    return lambda_e_tim1;
+}
 
 status Update_status(
     const localisation localisation_ti,
     const environment environment_ti,
-    const status infected_tim1,
+    const status status_tim1,
     const double alpha,
     const double beta,
     const double epsilon,
     const int dt
-);
+){
+    return status_tim1;
+}
 
 
-//////////////////// GARBAGE //////////////////////////
+interaction Update_interaction(
+    Rcpp::DataFrame data,
+    int ti,
+    Rcpp::String time,
+    const Rcpp::Datetime begin_date, // can change (apply offset of (begin_date) in data --> origin is 00-00-00 00:00:00)
+    const int dt
+) {
+    
+    if (time == "tim1"){
+        interaction int_tim1;
+        int_tim1.from = 1;
+        int_tim1.to = 1;
+
+        return int_tim1;
+        }
+
+    if (time == "ti"){
+        interaction int_ti;
 
 
-
-
-
-
-// interaction Update_interaction(graph graph, int subdivision){
-//     // Filtration du graphe
-//     return int_current;
-// };
-
-
-// interaction_loc Associate_interaction(
-//     interaction int_current
-// );
-
-// localisation Update_localisation(
-//     localisation loc_prev,
-//     interaction_loc int_loc_current
-// );
-
-
-
-// environment Update_environment(
-//     environment env_prev,
-//     localisation loc_current,
-//     status status_prev,
-//     double mu,
-//     double nu
-// ){
-//     for (int i = 1; t < sizeof(status_prev); ++t) {
-//         if (status_prev[i].status == 1) {
-
-
-//         }
-
-//     }
-
-
-// }
-
-// environment Update_environment_bis(
-//     environment env_prev,
-//     const localisation loc_prev,
-//     const status status_prev,
-//     const double mu,
-//     const double nu,
-//     const int dt
-// ){
-
-//         for (const auto& room : env_prev.room) {
-//             int n_inf = 0;
-//             for (const auto& ind : loc_prev.individual){
-//                 if (ind.position == room.room){
-//                     int identifiant = ind.id;
-//                     if (status_prev[identifiant].status == 1){
-//                         n_inf +=1;
-//                     }
-//                 }
-//             }
-//             room.env = room.env * exp(- mu * dt) + n_inf * nu * dt;
-//         }
-
-//     return env_prev; 
-// }
+        return int_ti;
+    }
+    interaction int_ti;
+    return int_ti; // if time is not ti or tim1
+}
