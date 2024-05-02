@@ -19,7 +19,7 @@ library(RcppParallel)
 wd <- getwd()
 knitr::opts_chunk$set(root.dir = wd)
 
-simplified_path <- file.path(wd, "..", "data", "data-simplified")
+simplified_path <- file.path(wd, "..", "..", "data", "data-simplified")
 graph_1 <- read.csv2(file = file.path(simplified_path, "graph_1.csv"), header = TRUE, sep = ";") %>% 
                       mutate(date_posix = as.POSIXct(x = date_posix, format = "%Y-%m-%d %H:%M:%S"))
 ```
@@ -36,7 +36,7 @@ n_subdivisions <- as.integer(time_spent) * 24 * 60 * 2 ## Time spent * hours * m
 ## Test parralel
 ```{r}
 # Call the parallel function
-sourceCpp(file.path(wd,"..","cpp","test-parallel.cpp"))
+sourceCpp(file.path(wd,"..", "..","cpp","test-parallel.cpp"))
 
 ```
 
@@ -59,7 +59,7 @@ print(para_b-para_a)
 # Erreur : logical subsetting requires vectors of identical size
 # Erreur : plus de gestionnaire d'erreur disponible (erreurs récursives ? ) ;  appel d'un redémarrage de type 'abort'
 # Erreur dans .Call(<pointer: (nil)>, date_posix, length, from, to, begin_date,  : Valeur NULL passée comme adresse symbolique
-# write.csv2(interactions_tot, file = file.path(wd,"..", "data", "data-expanded", "graph-1-int-1-to-end-cpp.csv"))
+# write.csv2(interactions_tot, file = file.path(wd,"..", "..", "data", "data-expanded", "graph-1-int-1-to-end-cpp.csv"))
 # Line 31cannot convert 'double' to 'const char*'
 # Line 41cannot convert 'std::__cxx11::basic_string<char>' to 'const char*'
 ```
@@ -84,7 +84,7 @@ print("Time RcppParallel")
 print(para_b-para_a)
 print("Time R (linear)")
 print(lin_b-lin_a)
-# write.csv2(interactions_tot, file = file.path(wd,"..", "data", "data-expanded", "graph-1-int-1-to-end-R.csv"))
+# write.csv2(interactions_tot, file = file.path(wd,"..", "..", "data", "data-expanded", "graph-1-int-1-to-end-R.csv"))
 ```
 
 
