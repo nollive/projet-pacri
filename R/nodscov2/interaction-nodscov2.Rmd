@@ -10,6 +10,19 @@ knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
 library(tidyverse)
 library(ggplot2)
+library(lubridate)
+```
+
+```{r}
+wd <- getwd()
+knitr::opts_chunk$set(root.dir = wd)
+
+data_path <- file.path(wd,"..", "..", "data")
+observed_path <- file.path(data_path,"data-observed")
+synthetic_path <- file.path(data_path, "data-synthetic-graphs")
+simplified_path <- file.path(data_path, "data-simplified")
+expanded_path <- file.path(data_path,"data-expanded")
+nodscov2_path <- file.path(data_path, "data-nodscov2") 
 ```
 
 ### WIP 
@@ -25,6 +38,17 @@ load("Y:/ogaufres/pacri-project/data/data-nodscov2/list_ward.RData")
 Encoding(admission$hospital) <- 'latin1'
 ```
 
+## (TEMP)
+```{r, include = FALSE}
+# write.csv2(admission, file = file.path(nodscov2_path, "nodscov2-csv","admission-nodscov2.csv"), row.names = FALSE)
+# 
+# sapply(names(list_ward),
+#  function (x) write.csv2(list_ward[[x]],
+#                          file = file.path(nodscov2_path,"nodscov2-csv",paste(x,"csv",sep="." )),
+#                          row.names = FALSE)   )
+```
+
+
 ## Data structure
 ```{r}
 ### ADMISSION = Individual's info
@@ -37,6 +61,8 @@ names(list_ward)
 # Structures of wards df
 head(list_ward$`Raymond_Poincare-Reanimation-20200506-20200507`)
 ```
+
+
 ## Individual proportions
 ```{r}
 head(admission)
@@ -51,6 +77,7 @@ table(admission$status, admission$cat, useNA = "always")
 table(admission$hospital, admission$ward)
 ```
 
+
 ## "FILTRATION"
 ```{r}
 admission %>% filter(ward == "Reanimation")
@@ -60,12 +87,22 @@ admission %>% filter(ward == "Reanimation") %>% group_by(hospital) %>% summarise
 
 ## Cat in each reanimation ward
 admission %>% filter(ward == "Reanimation") %>% group_by(hospital, cat) %>% summarise( n = n(), .groups = "drop")
+
+# admission %>% filter(ward == "Reanimation" | ward == "ReaChirurgie")
+# 
+# ## Ind in each reanimation ward
+# admission %>% filter(ward == "Reanimation"| ward == "ReaChirurgie") %>% group_by(hospital) %>% summarise( n = n(), .groups = "drop")
+# 
+# ## Cat in each reanimation ward
+# admission %>% filter(ward == "Reanimation"| ward == "ReaChirurgie") %>% group_by(hospital, cat) %>% summarise( n = n(), .groups = "drop")
 ```
+
 
 ## PLOTS
 ```{r}
+## Reanimation wards
 admission %>%
-  filter(ward == "Reanimation") %>%
+  filter(ward == "Reanimation" ) %>%
   group_by(hospital, cat) %>%
   summarise( n = n(), .groups = "drop") %>%
     ggplot(., aes(x = cat, y = n)) +
@@ -73,6 +110,133 @@ admission %>%
     facet_grid(cols = vars(hospital)) +
     theme_bw() +
     theme(axis.text.x = element_text(angle = 35, hjust = 1))
+
+## ReaChirurgie wards (For HC LYON EDOUARD HERRIOT 's REACHIRURGIE WARD)
+admission %>%
+  filter(ward == "ReaChirurgie") %>%
+  group_by(hospital, cat) %>%
+  summarise( n = n(), .groups = "drop") %>%
+    ggplot(., aes(x = cat, y = n)) +
+    geom_bar(stat = "identity") +
+    facet_grid(cols = vars(hospital)) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 35, hjust = 1))
+
+
 ```
 
+
+## DF of interest
+```{r}
+## We keep wards with the lowest number of visitors (hyp. no visitors)
+keep_names <- c("Raymond_Poincare-Reanimation-20200506-20200507",
+          "Edouard_Herriot-Reanimation-20200609-20200610")
+
+list_rea <- list_ward[keep_names]
+```
+
+
+## MODIFY INDIVIDUAL IDS (include PA/PE in id)
+```{r}
+## (TEMPORARY)
+admission_rea <- admission %>%
+  filter(ward == "Reanimation") %>% 
+  filter(hospital != "APHP - NECKER ENFANTS MALADES")
+
+table(admission_rea$hospital, admission_rea$cat)
+rm(admission_rea)
+## END (TEMPORARY)
+
+
+
+## FILTER ADMISSION
+admission_keep <- admission %>%
+  ## Remove visitors/admin/logistics/investigators
+  filter(ward == "Reanimation") %>% 
+  filter(hospital != "APHP - NECKER ENFANTS MALADES") %>%
+  filter(!(cat %in% c("administration",
+                  "investigation",
+                  "logistic",
+                  "visitor"))) %>%
+  ## ADD PE/PA IN ADMISSION'S IDs (id)
+  mutate(id_bis = paste0(status,"-",id))
+
+
+list_rea <- list_ward[keep_names]
+## FILTER THE DATAFRAMES
+list_rea <- lapply(list_rea, function(x) {
+  ## FILTER INTERACTIONS TO KEEP ONLY HCW AND PATIENTS
+  x <- x%>% filter(from %in% admission_keep$id & to %in% admission_keep$id)
+  ## ADD INFO OF THE STATUS FOR INDIVIDUALS
+  x <- left_join(x, admission_keep %>% select(id, status), by = c("from" = "id")) %>%
+    rename(from_status = status) %>%
+    left_join(admission_keep %>% select(id, status), by = c("to" = "id")) %>%
+    rename(to_status = status)
+})
+```
+
+## Night interaction distribution
+```{r}
+# admission_keep %>% filter(hospital != "APHP - RAYMOND POINCARÉ") %>% group_by(status) %>% summarise(count = n())
+# 
+# admission_keep %>% filter(hospital == "APHP - RAYMOND POINCARÉ") %>% group_by(status) %>% summarise(count = n())
+
+
+poincare <- "Raymond_Poincare-Reanimation-20200506-20200507"
+herriot <- "Edouard_Herriot-Reanimation-20200609-20200610"
+
+temp_RP <- list_rea[[poincare]] #%>% filter(length > 300)
+
+temp_EH <- list_rea[[herriot]] #%>% filter(length > 300)
+
+k_RP = temp_RP 
+table(k_RP$from_status, k_RP$to_status)
+k_RP %>% filter(from_status == "PA" & to_status == "PA")
+
+k_EH = temp_EH  
+table(k_EH$from_status, k_EH$to_status)
+k_EH %>% filter(from_status == "PA" & to_status == "PA")
+```
+
+
+
+
+<!-- ################################# GARBAGE ############################## -->
+
+
+<!-- ```{r} -->
+<!-- # EH_ReaChir <- list_ward$`Edouard_Herriot-ReaChirurgie-20200616-20200617` -->
+<!-- # EH_Rea <- list_ward$`Edouard_Herriot-Reanimation-20200609-20200610` -->
+<!-- # RP_Rea <- list_ward$`Raymond_Poincare-Reanimation-20200506-20200507` -->
+<!-- # Necker_Rea <- list_ward$`Necker-Reanimation-20200525-20200526` -->
+
+<!-- rea_names <- c("Edouard_Herriot-ReaChirurgie-20200616-20200617", -->
+<!--           "Edouard_Herriot-Reanimation-20200609-20200610", -->
+<!--           "Raymond_Poincare-Reanimation-20200506-20200507", -->
+<!--           "Necker-Reanimation-20200525-20200526") -->
+<!-- ``` -->
+
+
+<!-- ### "Edouard_Herriot-ReaChirurgie-20200616-20200617" -->
+<!-- ```{r} -->
+<!-- EH_ReaChir <- ldf$`Edouard_Herriot-ReaChirurgie-20200616-20200617` -->
+<!-- ``` -->
+
+
+<!-- ### "Edouard_Herriot-Reanimation-20200609-20200610" -->
+<!-- ```{r} -->
+<!-- EH_Rea <- ldf$`Edouard_Herriot-Reanimation-20200609-20200610` -->
+<!-- ``` -->
+
+
+<!-- ### "Necker-Reanimation-20200525-20200526" -->
+<!-- ```{r} -->
+<!-- Necker_Rea <- ldf$`Necker-Reanimation-20200525-20200526` -->
+<!-- ``` -->
+
+
+<!-- ### "Raymond_Poincare-Reanimation-20200506-20200507" -->
+<!-- ```{r} -->
+<!-- RP_Rea <- ldf$`Raymond_Poincare-Reanimation-20200506-20200507` -->
+<!-- ``` -->
 
