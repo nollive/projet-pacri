@@ -52,7 +52,7 @@ int main()
     environment_ti = Update_environment(environment_ti, localisation_tim1, status_tim1, mu, nu, dt );
     // UPDATE STATUS //
     // I.E. UPDATE STATUS & RANDOM DRAW OF INFECTION/INFECTION TIME //
-    status_ti = Update_status(localisation_ti, environment environment_ti, interaction_ti, status status_ti, status_tim1, lambda_c_tim1, lambda_e_tim1, alpha, beta, epsilon, dt, ti);
+    status_ti = Update_status(localisation_ti, environment_ti, interaction_ti, status_ti, status_tim1, lambda_c_tim1, lambda_e_tim1, beta, epsilon, dt, ti);
       
     // OPTIONNAL: STORE ti DATA IN GLOBAL DATA //
   };

@@ -196,7 +196,6 @@ status Update_status(
     const status status_tim1,
     lambda_c lambda_c_tim1,
     lambda_e lambda_e_tim1,
-    const double alpha,
     const double beta,
     const double epsilon,
     const int dt,

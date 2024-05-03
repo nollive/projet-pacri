@@ -12,6 +12,18 @@ library(tidyverse)
 library(ggplot2)
 ```
 
+```{r}
+wd <- getwd()
+knitr::opts_chunk$set(root.dir = wd)
+
+data_path <- file.path(wd,"..", "..", "data")
+observed_path <- file.path(data_path,"data-observed")
+synthetic_path <- file.path(data_path, "data-synthetic-graphs")
+simplified_path <- file.path(data_path, "data-simplified")
+expanded_path <- file.path(data_path,"data-expanded")
+nodscov2_path <- file.path(data_path, "data-nodscov2") 
+```
+
 ### WIP 
 
 ## NodsCov2 data (not shared)
@@ -19,6 +31,14 @@ library(ggplot2)
 load("Y:/ogaufres/pacri-project/data/data-nodscov2/admission_ctc_nodscov2.RData")
 load("Y:/ogaufres/pacri-project/data/data-nodscov2/list_ward.RData")
 ```
+
+```{r}
+write.csv2(admission, file = file.path(nodscov2_path, "admission-nodscov2.csv"), row.names = FALSE)
+
+sapply(names(list_ward), 
+ function (x) write.csv2(list_ward[[x]], file = paste(x, "csv", sep=".") )   )
+```
+
 
 ## FIXING ENCODING
 ```{r}
@@ -37,6 +57,8 @@ names(list_ward)
 # Structures of wards df
 head(list_ward$`Raymond_Poincare-Reanimation-20200506-20200507`)
 ```
+
+
 ## Individual proportions
 ```{r}
 head(admission)
@@ -51,6 +73,7 @@ table(admission$status, admission$cat, useNA = "always")
 table(admission$hospital, admission$ward)
 ```
 
+
 ## "FILTRATION"
 ```{r}
 admission %>% filter(ward == "Reanimation")
@@ -61,6 +84,7 @@ admission %>% filter(ward == "Reanimation") %>% group_by(hospital) %>% summarise
 ## Cat in each reanimation ward
 admission %>% filter(ward == "Reanimation") %>% group_by(hospital, cat) %>% summarise( n = n(), .groups = "drop")
 ```
+
 
 ## PLOTS
 ```{r}
@@ -74,5 +98,6 @@ admission %>%
     theme_bw() +
     theme(axis.text.x = element_text(angle = 35, hjust = 1))
 ```
+
 
 

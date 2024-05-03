@@ -98,9 +98,10 @@ status Update_status(
     const localisation localisation_ti,
     const environment environment_ti,
     const status status_tim1,
-    const double alpha,
     const double beta,
     const double epsilon,
+    const double nu,
+    const double mu,
     const int dt
 ){
     return status_tim1;
