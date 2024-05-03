@@ -1,0 +1,78 @@
+---
+title: "interaction-nodscov2"
+author: "Olivier GAUFRÈS"
+date: "2024-05-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+```
+
+### WIP 
+
+## NodsCov2 data (not shared)
+```{r}
+load("Y:/ogaufres/pacri-project/data/data-nodscov2/admission_ctc_nodscov2.RData")
+load("Y:/ogaufres/pacri-project/data/data-nodscov2/list_ward.RData")
+```
+
+## FIXING ENCODING
+```{r}
+Encoding(admission$hospital) <- 'latin1'
+```
+
+## Data structure
+```{r}
+### ADMISSION = Individual's info
+head(admission)
+admission %>% distinct(hospital)
+
+### LIST_WARD = LIST OF DATAFRAMES, EACH DF CONTAINS WARDS' INTERACTIONS
+# Wards names
+names(list_ward)
+# Structures of wards df
+head(list_ward$`Raymond_Poincare-Reanimation-20200506-20200507`)
+```
+## Individual proportions
+```{r}
+head(admission)
+
+## Patients / HCW in all wards/hospitals
+table(admission$status)
+
+## Patients / HCW by cat (NA == patients)
+table(admission$status, admission$cat, useNA = "always") 
+
+## Proportion of individuals/ward etc..
+table(admission$hospital, admission$ward)
+```
+
+## "FILTRATION"
+```{r}
+admission %>% filter(ward == "Reanimation")
+
+## Ind in each reanimation ward
+admission %>% filter(ward == "Reanimation") %>% group_by(hospital) %>% summarise( n = n(), .groups = "drop")
+
+## Cat in each reanimation ward
+admission %>% filter(ward == "Reanimation") %>% group_by(hospital, cat) %>% summarise( n = n(), .groups = "drop")
+```
+
+## PLOTS
+```{r}
+admission %>%
+  filter(ward == "Reanimation") %>%
+  group_by(hospital, cat) %>%
+  summarise( n = n(), .groups = "drop") %>%
+    ggplot(., aes(x = cat, y = n)) +
+    geom_bar(stat = "identity") +
+    facet_grid(cols = vars(hospital)) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 35, hjust = 1))
+```
+
+
