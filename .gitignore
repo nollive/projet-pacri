@@ -11,3 +11,4 @@ figures
 .vscode
 .Rpackages
 *.o
+data-nodscov2
