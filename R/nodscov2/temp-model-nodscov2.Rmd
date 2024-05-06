@@ -1,0 +1,148 @@
+---
+title: "temp-model-nodscov2"
+author: "Olivier GAUFRÈS"
+date: "2024-05-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+#library(tidyverse)
+library(ggplot2)
+library(lubridate)
+```
+
+```{r}
+wd <- getwd()
+knitr::opts_chunk$set(root.dir = wd)
+
+data_path <- file.path(wd,"..", "..", "data")
+observed_path <- file.path(data_path,"data-observed")
+synthetic_path <- file.path(data_path, "data-synthetic-graphs")
+simplified_path <- file.path(data_path, "data-simplified")
+expanded_path <- file.path(data_path,"data-expanded")
+nodscov2_path <- file.path(data_path, "data-nodscov2") 
+```
+
+### WIP 
+
+## NodsCov2 data (not shared)
+```{r}
+load("Y:/ogaufres/pacri-project/data/data-nodscov2/admission_ctc_nodscov2.RData")
+load("Y:/ogaufres/pacri-project/data/data-nodscov2/list_ward.RData")
+```
+
+## FIXING ENCODING
+```{r}
+Encoding(admission$hospital) <- 'latin1'
+```
+
+```{r}
+## FILTER THE DATAFRAMES
+list_ward <- lapply(list_ward, function(x) {
+  ## FILTER INTERACTIONS TO KEEP ONLY HCW AND PATIENTS
+  x <- x%>% filter(from %in% admission$id & to %in% admission$id)
+  ## ADD INFO OF THE STATUS FOR INDIVIDUALS
+  x <- left_join(x, admission %>% select(id, status), by = c("from" = "id")) %>%
+    rename(from_status = status) %>%
+    left_join(admission %>% select(id, status), by = c("to" = "id")) %>%
+    rename(to_status = status)
+})
+
+data <- list_ward[["Raymond_Poincare-Reanimation-20200506-20200507"]]
+
+admission <- admission %>%
+  filter(ward == "Reanimation") %>% 
+  filter(hospital == "APHP - RAYMOND POINCARÉ") %>%
+  filter(!(cat %in% c("administration",
+                  "investigation",
+                  "logistic",
+                  "visitor"))) %>%
+  ## ADD PE/PA IN ADMISSION'S IDs (id)
+  mutate(id_bis = paste0(status,"-",id))
+```
+
+
+## TEMPORARY
+```{r}
+## plans are more detailled for Raymond Poincaré hospital
+## Dimensions
+
+begin_date <- as.POSIXct(min(data$date_posix_first))
+end_date <- as.POSIXct(max(data$date_posix_first))
+time_spent <- end_date - begin_date
+
+n_individuals <- as.integer(admission %>%
+                              filter(hospital == "APHP - RAYMOND POINCARÉ", ward == "Reanimation") %>%
+                              distinct(id) %>%
+                              count())
+
+n_subdivisions <- as.integer(time_spent) * 24 * 60 * 2 ## Time spent * hours * minutes * 2 (number of time subdivisions)
+```
+
+## ROOMS
+```{r}
+rooms <- admission %>%
+  filter(status == "PA", hospital == "APHP - RAYMOND POINCARÉ") %>%
+  distinct(id) %>%
+  mutate(room = as.factor(row_number())) %>%
+  mutate(id_room = as.factor(row_number())) %>%
+  select(id_room,room, id)
+
+rooms <- rooms %>%
+  bind_rows(data.frame(room = "Restroom", id = "PE", id_room = as.factor(nrow(rooms) + 1))) %>%
+  bind_rows(data.frame(room = "Corridor", id = "ALL", id_room = as.factor(nrow(rooms) + 2)))
+
+## "001-0127-B-A" and "001-0128-Z-K" are in the same room
+rooms <-rooms %>% mutate(room = ifelse(id == "001-0128-Z-K", rooms[rooms$id == "001-0127-B-A", "room"], room),
+                         id_room = ifelse(id == "001-0128-Z-K", rooms[rooms$id == "001-0127-B-A", "id_room"], id_room))
+```
+
+## ENVIRONMENT
+```{r}
+environment <- rooms %>%
+  distinct(room) %>%
+  mutate(env = 0) %>%
+  mutate(id_room = rooms %>% distinct(id_room) %>% pull() ) %>%
+  select(room, id_room, env)
+```
+
+## LOCALISATION
+```{r}
+## Individual localisation stores, for every individual, the localisation where happened his last interaction (and the localisation he will be after -> might be deleted after, depends on the structure of code below)
+## Initially, every patient is in his/her room & HCW in HCW's rest room
+localisation <- admission %>%
+  distinct(id) %>%
+  mutate(localisation_tim1 = NA, localisation_ti = NA) %>%
+  select(id, localisation_tim1, localisation_ti)
+
+
+
+for (i in localisation$id){
+  if (admission[admission$id == i, "status"] == "PA"){
+    localisation[localisation$id == i, "localisation_tim1"] <- rooms[rooms$id == i, "room"]
+  }
+  else{
+    localisation[localisation$id == i, "localisation_tim1"] <- "Restroom"
+  }
+}
+```
+
+## STATUS
+```{r}
+status <- admission %>%
+  distinct(id) %>%
+  mutate(status = 0)
+```
+
+## GLOBAL DATABASE
+```{r}
+global <- admission %>% 
+  distinct(id) %>%
+  left_join(status, by = "id") %>%
+  left_join(localisation, by = "id")
+```
+
+
+
