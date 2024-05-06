@@ -8,7 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
-library(tidyverse)
+#library(tidyverse)
 library(ggplot2)
 library(lubridate)
 ```
@@ -175,28 +175,65 @@ list_rea <- lapply(list_rea, function(x) {
 })
 ```
 
-## Night interaction distribution
+
+## DISTRIBUTIONS
 ```{r}
-# admission_keep %>% filter(hospital != "APHP - RAYMOND POINCARÉ") %>% group_by(status) %>% summarise(count = n())
-# 
-# admission_keep %>% filter(hospital == "APHP - RAYMOND POINCARÉ") %>% group_by(status) %>% summarise(count = n())
+data_rea <- bind_rows(
+  mutate(list_rea[[poincare]], hospital = "Raymond Poicaré"),
+  mutate(list_rea[[herriot]], hospital = "Edouard Herriot") ) %>%
+  mutate(type_int = paste0(from_status, "-", to_status)) %>%
+  mutate(type_int = ifelse(type_int == "PA-PE", "PE-PA", type_int))
 
 
+## n / type of int
+data_rea %>%
+  group_by(hospital, type_int) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  ggplot(aes(x = type_int, y = n)) +
+  geom_bar(stat = "identity") +
+  facet_grid(cols = vars(hospital)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1)) +
+  labs(title = "Distribution of interaction in Reanimation")
+
+# n distribution / hour
+data_rea %>%
+  group_by(hospital, hour(date_posix_first), type_int) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  mutate(hour = `hour(date_posix_first)`) %>%
+  ggplot(aes(x = hour, y = n)) +
+  geom_bar(stat = "identity") +
+  facet_grid(cols = vars(type_int), rows = vars(hospital)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1)) +
+  labs(title = "Distribution of Intervals in Reanimation")
+```
+
+## PA-PA INTERACTIONS
+```{r}
 poincare <- "Raymond_Poincare-Reanimation-20200506-20200507"
 herriot <- "Edouard_Herriot-Reanimation-20200609-20200610"
 
-temp_RP <- list_rea[[poincare]] #%>% filter(length > 300)
+k_RP <- list_rea[[poincare]] #%>% filter(length > 300)
 
-temp_EH <- list_rea[[herriot]] #%>% filter(length > 300)
+k_EH <- list_rea[[herriot]] #%>% filter(length > 300)
 
-k_RP = temp_RP 
 table(k_RP$from_status, k_RP$to_status)
 k_RP %>% filter(from_status == "PA" & to_status == "PA")
+k_RP %>% filter(from_status == "PA" & to_status == "PA") %>% group_by(from) %>% summarise(len = sum(length))
+# 001-0038-B-S - 6670s --> why?
+# 001-0127-B-A - 109770s = 30.49167 hour out of 39.78888hours --> same room? (valid)
+# max(k_RP$date_posix_first) - min(k_RP$date_posix_first)
+# max(k_RP$date_posix_first) - min(k_RP$date_posix_first) - (109770 / 3600 / 24)
 
-k_EH = temp_EH  
+
 table(k_EH$from_status, k_EH$to_status)
 k_EH %>% filter(from_status == "PA" & to_status == "PA")
+k_EH %>% filter(from_status == "PA" & to_status == "PA") %>% group_by(from) %>% summarise(len = sum(length))
+## we can delete PA-PA int in EH ()
 ```
+
+
 
 
 
