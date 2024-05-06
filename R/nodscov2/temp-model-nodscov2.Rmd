@@ -141,7 +141,8 @@ status <- admission %>%
 global <- admission %>% 
   distinct(id) %>%
   left_join(status, by = "id") %>%
-  left_join(localisation, by = "id")
+  left_join(localisation, by = "id") %>%
+  mutate(time = 0)
 ```
 
 

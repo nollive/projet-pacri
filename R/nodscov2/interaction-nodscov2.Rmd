@@ -178,6 +178,10 @@ list_rea <- lapply(list_rea, function(x) {
 
 ## DISTRIBUTIONS
 ```{r}
+poincare <- "Raymond_Poincare-Reanimation-20200506-20200507"
+herriot <- "Edouard_Herriot-Reanimation-20200609-20200610"
+
+
 data_rea <- bind_rows(
   mutate(list_rea[[poincare]], hospital = "Raymond Poicaré"),
   mutate(list_rea[[herriot]], hospital = "Edouard Herriot") ) %>%
@@ -211,8 +215,7 @@ data_rea %>%
 
 ## PA-PA INTERACTIONS
 ```{r}
-poincare <- "Raymond_Poincare-Reanimation-20200506-20200507"
-herriot <- "Edouard_Herriot-Reanimation-20200609-20200610"
+
 
 k_RP <- list_rea[[poincare]] #%>% filter(length > 300)
 
@@ -233,6 +236,57 @@ k_EH %>% filter(from_status == "PA" & to_status == "PA") %>% group_by(from) %>% 
 ## we can delete PA-PA int in EH ()
 ```
 
+
+```{r}
+data <- list_rea[[poincare]]
+begin_date <- as.POSIXct(min(data$date_posix_first))
+end_date <- as.POSIXct(max(data$date_posix_first + data$length))
+time_spent <- end_date - begin_date
+
+n_subdivisions <- as.integer(time_spent) * 24 * 60 * 2 ## Time spent * hours * minutes * 2 (number of time subdivisions)
+interactions_tot_R <- data.frame(from = NA, to = NA, time = NA, from_status = NA, to_status = NA )
+
+lin_a <- Sys.time()
+for(t in 1:n_subdivisions){
+  interactions_t <- data %>%
+    filter(date_posix_first <= begin_date + (t)*30 & date_posix_first + length >= begin_date + (t+1)*30) %>%
+    mutate(time = t) %>%
+    select(from, to, time, from_status, to_status)
+
+  if (dim(interactions_t)[1]!= 0){
+  interactions_tot_R <- interactions_tot_R %>% bind_rows(interactions_t)
+  }
+}
+lin_b <- Sys.time()
+print(lin_b-lin_a)
+write.csv2(interactions_tot_R, file = file.path(wd,"..", "..", "data", "data-nodscov2", "int_tot_RP_test.csv"), row.names = F)
+
+```
+```{r}
+data <- list_rea[[herriot]]
+begin_date <- as.POSIXct(min(data$date_posix_first)) - 10 ## to begin at "2020-05-06 07:00:00"
+end_date <- as.POSIXct(max(data$date_posix_first + data$length))
+time_spent <- end_date - begin_date
+
+n_subdivisions <- as.integer(time_spent) * 24 * 60 * 2 ## Time spent * hours * minutes * 2 (number of time subdivisions)
+interactions_tot_R <- data.frame(from = NA, to = NA, time = NA, from_status = NA, to_status = NA )
+
+lin_a <- Sys.time()
+for(t in 1:n_subdivisions){
+  interactions_t <- data %>%
+    filter(date_posix_first <= begin_date + (t)*30 & date_posix_first + length >= begin_date + (t+1)*30) %>%
+    mutate(time = t) %>%
+    select(from, to, time, from_status, to_status)
+
+  if (dim(interactions_t)[1]!= 0){
+  interactions_tot_R <- interactions_tot_R %>% bind_rows(interactions_t)
+  }
+}
+lin_b <- Sys.time()
+print(lin_b-lin_a)
+write.csv2(interactions_tot_R, file = file.path(wd,"..", "..", "data", "data-nodscov2", "int_tot_EH_test.csv"), row.names = F)
+
+```
 
 
 
