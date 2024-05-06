@@ -223,17 +223,65 @@ k_EH <- list_rea[[herriot]] #%>% filter(length > 300)
 
 table(k_RP$from_status, k_RP$to_status)
 k_RP %>% filter(from_status == "PA" & to_status == "PA")
-k_RP %>% filter(from_status == "PA" & to_status == "PA") %>% group_by(from) %>% summarise(len = sum(length))
-# 001-0038-B-S - 6670s --> why?
-# 001-0127-B-A - 109770s = 30.49167 hour out of 39.78888hours --> same room? (valid)
+k_RP %>% filter(from_status == "PA" & to_status == "PA") %>% group_by(from,to) %>% summarise(len = sum(length))
+
+# 001-0127-B-A - 
 # max(k_RP$date_posix_first) - min(k_RP$date_posix_first)
 # max(k_RP$date_posix_first) - min(k_RP$date_posix_first) - (109770 / 3600 / 24)
+
+
+
+k_RP %>% filter(from %in% unique_ids | to %in% unique_ids) %>% filter(from %in% b | to %in% b) %>% 
+## "001-0038-B-S" and "001-0039-B-F" are in the same room (HCW interaction with both at the same time, not interacting all the time maybe because CPI too distant)
+## "001-0127-B-A" and "001-0128-Z-K" are in the same room (109770s = 30.49167 hour out of 39.78888hours)
 
 
 table(k_EH$from_status, k_EH$to_status)
 k_EH %>% filter(from_status == "PA" & to_status == "PA")
 k_EH %>% filter(from_status == "PA" & to_status == "PA") %>% group_by(from) %>% summarise(len = sum(length))
 ## we can delete PA-PA int in EH ()
+```
+```{r}
+### HYP : "001-0038-B-S" and "001-0039-B-F" are in the same room
+data <- list_rea[[poincare]]
+
+## ORDER FROM/TO
+data_b <- data %>%
+  filter(from %in% b | to %in% b) %>%
+  filter(!(from_status == "PA" & to_status == "PA")) %>%
+  mutate(n_from = ifelse((from == "001-0038-B-S" | from == "001-0039-B-F"), from, to  )
+         , n_to = ifelse((to == "001-0038-B-S" | to == "001-0039-B-F"), from, to))
+
+
+pe_individuals <- unique(c(data_b$to[data_b$to_status == "PE"]))
+b <- c("001-0038-B-S", "001-0039-B-F")
+simultaneous_interactions <- list()
+
+
+for (individual in pe_individuals) {
+  # Filter to keep only HCW's interaction
+  interactions <- data_b %>%
+    filter(n_to == individual)
+  
+  # If the HCW interacts with both patients
+  if (nrow(interactions) >= 2) {
+    # double for loop to check if i and [j=i+1;n] are overlapping] for i 1:nrow(interaction)
+    for (i in 1:(nrow(interactions)-1)) {
+      for (j in (i+1):nrow(interactions)) {
+        # Check if overlapping
+        if (interactions$date_posix_first[i] <= (interactions$date_posix_first[j] + interactions$length[j]) &&
+            (interactions$date_posix_first[i] + interactions$length[i]) >= interactions$date_posix_first[j]) {
+          # Print the int (store it?)
+          cat("Individu:", individual, "\n")
+          print(interactions[c(i, j), ])
+          cat("\n")
+        }
+      }
+    }
+  }
+}
+
+## 
 ```
 
 
