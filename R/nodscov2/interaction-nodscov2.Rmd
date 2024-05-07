@@ -29,8 +29,8 @@ nodscov2_path <- file.path(data_path, "data-nodscov2")
 
 ## NodsCov2 data (not shared)
 ```{r}
-load("Y:/ogaufres/pacri-project/data/data-nodscov2/admission_ctc_nodscov2.RData")
-load("Y:/ogaufres/pacri-project/data/data-nodscov2/list_ward.RData")
+load("Y:/ogaufres/projet-pacri/data/data-nodscov2/admission_ctc_nodscov2.RData")
+load("Y:/ogaufres/projet-pacri/data/data-nodscov2/list_ward.RData")
 ```
 
 ## FIXING ENCODING
@@ -225,42 +225,30 @@ table(k_RP$from_status, k_RP$to_status)
 k_RP %>% filter(from_status == "PA" & to_status == "PA")
 k_RP %>% filter(from_status == "PA" & to_status == "PA") %>% group_by(from,to) %>% summarise(len = sum(length))
 
-# 001-0127-B-A - 
-# max(k_RP$date_posix_first) - min(k_RP$date_posix_first)
-# max(k_RP$date_posix_first) - min(k_RP$date_posix_first) - (109770 / 3600 / 24)
-
-
-
-k_RP %>% filter(from %in% unique_ids | to %in% unique_ids) %>% filter(from %in% b | to %in% b) %>% 
-## "001-0038-B-S" and "001-0039-B-F" are in the same room (HCW interaction with both at the same time, not interacting all the time maybe because CPI too distant)
-## "001-0127-B-A" and "001-0128-Z-K" are in the same room (109770s = 30.49167 hour out of 39.78888hours)
-
-
 table(k_EH$from_status, k_EH$to_status)
 k_EH %>% filter(from_status == "PA" & to_status == "PA")
 k_EH %>% filter(from_status == "PA" & to_status == "PA") %>% group_by(from) %>% summarise(len = sum(length))
 ## we can delete PA-PA int in EH ()
 ```
+
+## Raymond Poincaré double rooms hypothesis
 ```{r}
 ### HYP : "001-0038-B-S" and "001-0039-B-F" are in the same room
-data <- list_rea[[poincare]]
-
 ## ORDER FROM/TO
-data_b <- data %>%
-  filter(from %in% b | to %in% b) %>%
+temp_a <- list_rea[[poincare]] %>%
+  filter(from %in% c("001-0038-B-S", "001-0039-B-F") 
+         | to %in% c("001-0038-B-S", "001-0039-B-F")) %>%
   filter(!(from_status == "PA" & to_status == "PA")) %>%
   mutate(n_from = ifelse((from == "001-0038-B-S" | from == "001-0039-B-F"), from, to  )
          , n_to = ifelse((to == "001-0038-B-S" | to == "001-0039-B-F"), from, to))
 
 
-pe_individuals <- unique(c(data_b$to[data_b$to_status == "PE"]))
-b <- c("001-0038-B-S", "001-0039-B-F")
-simultaneous_interactions <- list()
+pe_a <- unique(c(temp_a$to[temp_a$to_status == "PE"]))
+overlap_a <- data.frame()
 
-
-for (individual in pe_individuals) {
+for (individual in pe_a) {
   # Filter to keep only HCW's interaction
-  interactions <- data_b %>%
+  interactions <- temp_a %>%
     filter(n_to == individual)
   
   # If the HCW interacts with both patients
@@ -271,111 +259,92 @@ for (individual in pe_individuals) {
         # Check if overlapping
         if (interactions$date_posix_first[i] <= (interactions$date_posix_first[j] + interactions$length[j]) &&
             (interactions$date_posix_first[i] + interactions$length[i]) >= interactions$date_posix_first[j]) {
-          # Print the int (store it?)
-          cat("Individu:", individual, "\n")
-          print(interactions[c(i, j), ])
-          cat("\n")
+          if (interactions$n_from[i] != interactions$n_from[j]){
+          overlap_a <- bind_rows(overlap_a, interactions[c(i, j), ]) 
+          }
         }
       }
     }
   }
 }
+rm(pe_a)
+rm(interactions)
+rm(temp_a)
 
-## 
+summary(overlap_a)
 ```
 
 
 ```{r}
-data <- list_rea[[poincare]]
-begin_date <- as.POSIXct(min(data$date_posix_first))
-end_date <- as.POSIXct(max(data$date_posix_first + data$length))
-time_spent <- end_date - begin_date
+### HYP : "001-0127-B-A" and "001-0128-Z-K" are in the same room
 
-n_subdivisions <- as.integer(time_spent) * 24 * 60 * 2 ## Time spent * hours * minutes * 2 (number of time subdivisions)
-interactions_tot_R <- data.frame(from = NA, to = NA, time = NA, from_status = NA, to_status = NA )
+temp_b <- list_rea[[poincare]] %>%
+  filter(from %in% c("001-0127-B-A", "001-0128-Z-K" ) 
+         | to %in% c("001-0127-B-A", "001-0128-Z-K" )) %>%
+  filter(!(from_status == "PA" & to_status == "PA")) %>%
+  mutate(n_from = ifelse((from == "001-0127-B-A" | from == "001-0128-Z-K"), from, to  )
+         , n_to = ifelse((to == "001-0127-B-A" | to == "001-0128-Z-K"), from, to))
 
-lin_a <- Sys.time()
-for(t in 1:n_subdivisions){
-  interactions_t <- data %>%
-    filter(date_posix_first <= begin_date + (t)*30 & date_posix_first + length >= begin_date + (t+1)*30) %>%
-    mutate(time = t) %>%
-    select(from, to, time, from_status, to_status)
 
-  if (dim(interactions_t)[1]!= 0){
-  interactions_tot_R <- interactions_tot_R %>% bind_rows(interactions_t)
+pe_b <- unique(c(temp_b$to[temp_b$to_status == "PE"]))
+overlap_b <- data.frame()
+
+for (individual in pe_b) {
+  # Filter to keep only HCW's interaction
+  interactions <- temp_b %>%
+    filter(n_to == individual)
+  
+  # If the HCW interacts with both patients
+  if (nrow(interactions) >= 2) {
+    # double for loop to check if i and [j=i+1;n] are overlapping] for i 1:nrow(interaction)
+    for (i in 1:(nrow(interactions)-1)) {
+      for (j in (i+1):nrow(interactions)) {
+        # Check if overlapping
+        if (interactions$date_posix_first[i] <= (interactions$date_posix_first[j] + interactions$length[j]) &&
+            (interactions$date_posix_first[i] + interactions$length[i]) >= interactions$date_posix_first[j]) {
+          if (interactions$n_from[i] != interactions$n_from[j]){
+          overlap_b <- bind_rows(overlap_b, interactions[c(i, j), ]) 
+          }
+        }
+      }
+    }
   }
 }
-lin_b <- Sys.time()
-print(lin_b-lin_a)
-write.csv2(interactions_tot_R, file = file.path(wd,"..", "..", "data", "data-nodscov2", "int_tot_RP_test.csv"), row.names = F)
+rm(pe_b)
+rm(interactions)
+rm(temp_b)
+rm(interactions)
 
+summary(overlap_b)
 ```
+
+
+## EXPORT DATA TO CSV
 ```{r}
-data <- list_rea[[herriot]]
-begin_date <- as.POSIXct(min(data$date_posix_first)) - 10 ## to begin at "2020-05-06 07:00:00"
-end_date <- as.POSIXct(max(data$date_posix_first + data$length))
-time_spent <- end_date - begin_date
-
-n_subdivisions <- as.integer(time_spent) * 24 * 60 * 2 ## Time spent * hours * minutes * 2 (number of time subdivisions)
-interactions_tot_R <- data.frame(from = NA, to = NA, time = NA, from_status = NA, to_status = NA )
-
-lin_a <- Sys.time()
-for(t in 1:n_subdivisions){
-  interactions_t <- data %>%
-    filter(date_posix_first <= begin_date + (t)*30 & date_posix_first + length >= begin_date + (t+1)*30) %>%
-    mutate(time = t) %>%
-    select(from, to, time, from_status, to_status)
-
-  if (dim(interactions_t)[1]!= 0){
-  interactions_tot_R <- interactions_tot_R %>% bind_rows(interactions_t)
-  }
-}
-lin_b <- Sys.time()
-print(lin_b-lin_a)
-write.csv2(interactions_tot_R, file = file.path(wd,"..", "..", "data", "data-nodscov2", "int_tot_EH_test.csv"), row.names = F)
+# data <- list_rea[[poincare]]
+# begin_date <- as.POSIXct(min(data$date_posix_first))
+# end_date <- as.POSIXct(max(data$date_posix_first + data$length))
+# time_spent <- end_date - begin_date
+# 
+# n_subdivisions <- as.integer(time_spent) * 24 * 60 * 2 ## Time spent * hours * minutes * 2 (number of time subdivisions)
+# interactions_tot_R <- data.frame(from = NA, to = NA, time = NA, from_status = NA, to_status = NA )
+# 
+# lin_a <- Sys.time()
+# for(t in 1:n_subdivisions){
+#   interactions_t <- data %>%
+#     filter(date_posix_first <= begin_date + (t)*30 & date_posix_first + length >= begin_date + (t+1)*30) %>%
+#     mutate(time = t) %>%
+#     select(from, to, time, from_status, to_status)
+# 
+#   if (dim(interactions_t)[1]!= 0){
+#   interactions_tot_R <- interactions_tot_R %>% bind_rows(interactions_t)
+#   }
+# }
+# lin_b <- Sys.time()
+# print(lin_b-lin_a)
+# write.csv2(interactions_tot_R, file = file.path(wd,"..", "..", "data", "data-nodscov2", "int_tot_RP_test.csv"), row.names = F)
 
 ```
-
-
-
-
 
 <!-- ################################# GARBAGE ############################## -->
-
-
-<!-- ```{r} -->
-<!-- # EH_ReaChir <- list_ward$`Edouard_Herriot-ReaChirurgie-20200616-20200617` -->
-<!-- # EH_Rea <- list_ward$`Edouard_Herriot-Reanimation-20200609-20200610` -->
-<!-- # RP_Rea <- list_ward$`Raymond_Poincare-Reanimation-20200506-20200507` -->
-<!-- # Necker_Rea <- list_ward$`Necker-Reanimation-20200525-20200526` -->
-
-<!-- rea_names <- c("Edouard_Herriot-ReaChirurgie-20200616-20200617", -->
-<!--           "Edouard_Herriot-Reanimation-20200609-20200610", -->
-<!--           "Raymond_Poincare-Reanimation-20200506-20200507", -->
-<!--           "Necker-Reanimation-20200525-20200526") -->
-<!-- ``` -->
-
-
-<!-- ### "Edouard_Herriot-ReaChirurgie-20200616-20200617" -->
-<!-- ```{r} -->
-<!-- EH_ReaChir <- ldf$`Edouard_Herriot-ReaChirurgie-20200616-20200617` -->
-<!-- ``` -->
-
-
-<!-- ### "Edouard_Herriot-Reanimation-20200609-20200610" -->
-<!-- ```{r} -->
-<!-- EH_Rea <- ldf$`Edouard_Herriot-Reanimation-20200609-20200610` -->
-<!-- ``` -->
-
-
-<!-- ### "Necker-Reanimation-20200525-20200526" -->
-<!-- ```{r} -->
-<!-- Necker_Rea <- ldf$`Necker-Reanimation-20200525-20200526` -->
-<!-- ``` -->
-
-
-<!-- ### "Raymond_Poincare-Reanimation-20200506-20200507" -->
-<!-- ```{r} -->
-<!-- RP_Rea <- ldf$`Raymond_Poincare-Reanimation-20200506-20200507` -->
-<!-- ``` -->
 
