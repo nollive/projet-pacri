@@ -158,7 +158,7 @@ rm(status_t)
 ## global_environment
 ## global_status
 
-## infered_admission
+## inferred_admission
 ## HCW_interacting_id
 
 ## begin_date
