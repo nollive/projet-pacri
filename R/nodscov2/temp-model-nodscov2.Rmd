@@ -18,10 +18,6 @@ wd <- getwd()
 knitr::opts_chunk$set(root.dir = wd)
 
 data_path <- file.path(wd,"..", "..", "data")
-observed_path <- file.path(data_path,"data-observed")
-synthetic_path <- file.path(data_path, "data-synthetic-graphs")
-simplified_path <- file.path(data_path, "data-simplified")
-expanded_path <- file.path(data_path,"data-expanded")
 nodscov2_path <- file.path(data_path, "data-nodscov2") 
 ```
 
@@ -29,8 +25,9 @@ nodscov2_path <- file.path(data_path, "data-nodscov2")
 
 ## NodsCov2 data (not shared)
 ```{r}
-load("Y:/ogaufres/pacri-project/data/data-nodscov2/admission_ctc_nodscov2.RData")
-load("Y:/ogaufres/pacri-project/data/data-nodscov2/list_ward.RData")
+load("Y:/ogaufres/pacri-non-sync/data/data-nodscov2/admission_ctc_nodscov2.RData")
+load("Y:/ogaufres/pacri-non-sync/data/data-nodscov2/list_ward.RData")
+load(file.path(wd,"localization-nodscov2.RData")) ##overwrite admission
 ```
 
 ## FIXING ENCODING
@@ -52,98 +49,136 @@ list_ward <- lapply(list_ward, function(x) {
 
 data <- list_ward[["Raymond_Poincare-Reanimation-20200506-20200507"]]
 
-admission <- admission %>%
-  filter(ward == "Reanimation") %>% 
-  filter(hospital == "APHP - RAYMOND POINCARÉ") %>%
-  filter(!(cat %in% c("administration",
-                  "investigation",
-                  "logistic",
-                  "visitor"))) %>%
-  ## ADD PE/PA IN ADMISSION'S IDs (id)
-  mutate(id_bis = paste0(status,"-",id))
+# admission <- admission %>%
+#   filter(ward == "Reanimation") %>% 
+#   filter(hospital == "APHP - RAYMOND POINCARÉ") %>%
+#   filter(!(cat %in% c("administration",
+#                   "investigation",
+#                   "logistic",
+#                   "visitor"))) %>%
+#   ## ADD PE/PA IN ADMISSION'S IDs (id)
+#   mutate(id_bis = paste0(status,"-",id))
 ```
-
 
 ## TEMPORARY
 ```{r}
 ## plans are more detailled for Raymond Poincaré hospital
 ## Dimensions
 
-begin_date <- as.POSIXct(min(data$date_posix_first))
-end_date <- as.POSIXct(max(data$date_posix_first))
+begin_date
+end_date
+
 time_spent <- end_date - begin_date
+time_spent
+
+n_subdivisions
 
 n_individuals <- as.integer(admission %>%
                               filter(hospital == "APHP - RAYMOND POINCARÉ", ward == "Reanimation") %>%
                               distinct(id) %>%
                               count())
+n_individuals
 
-n_subdivisions <- as.integer(time_spent) * 24 * 60 * 2 ## Time spent * hours * minutes * 2 (number of time subdivisions)
+# begin_date <- as.POSIXct(min(data$date_posix_first))
+# end_date <- as.POSIXct(max(data$date_posix_first + data$length))
+
+# 
+# 
+# n_subdivisions <- as.integer(time_spent) * 24 * 60 * 2 ## Time spent * hours * minutes * 2 (number of time subdivisions)
+
+
+
 ```
 
 ## ROOMS
 ```{r}
-rooms <- admission %>%
-  filter(status == "PA", hospital == "APHP - RAYMOND POINCARÉ") %>%
-  distinct(id) %>%
-  mutate(room = as.factor(row_number())) %>%
-  mutate(id_room = as.factor(row_number())) %>%
-  select(id_room,room, id)
+## LOADED WITH .RData (localisation-nodscov2.Rmd)
+rooms
 
-rooms <- rooms %>%
-  bind_rows(data.frame(room = "Restroom", id = "PE", id_room = as.factor(nrow(rooms) + 1))) %>%
-  bind_rows(data.frame(room = "Corridor", id = "ALL", id_room = as.factor(nrow(rooms) + 2)))
-
-## "001-0127-B-A" and "001-0128-Z-K" are in the same room
-rooms <-rooms %>% mutate(room = ifelse(id == "001-0128-Z-K", rooms[rooms$id == "001-0127-B-A", "room"], room),
-                         id_room = ifelse(id == "001-0128-Z-K", rooms[rooms$id == "001-0127-B-A", "id_room"], id_room))
+# rooms <- admission %>%
+#   filter(status == "PA") %>%
+#   distinct(id) %>%
+#   mutate(room = as.factor(row_number())) %>%
+#   mutate(id_room = as.factor(row_number())) %>%
+#   select(id_room,room, id)
+# 
+# rooms <- rooms %>%
+#   bind_rows(data.frame(room = "Restroom", id = "PE", id_room = as.factor(nrow(rooms) + 1))) %>%
+#   bind_rows(data.frame(room = "Corridor", id = "ALL", id_room = as.factor(nrow(rooms) + 2)))
+# 
+# ### DOUBLE ROOMS
+# ## "001-0038-B-S" and = "001-0039-B-F" are in the same room
+# ## "001-0127-B-A" and "001-0128-Z-K" are in the same room
+# rooms <-rooms %>% mutate(room = ifelse(id == "001-0038-B-S", rooms[rooms$id == "001-0039-B-F", "room"], room),
+#                          id_room = ifelse(id == "001-0038-B-S", rooms[rooms$id == "001-0039-B-F", "id_room"], id_room))
+# 
+# rooms <-rooms %>% mutate(room = ifelse(id == "001-0128-Z-K", rooms[rooms$id == "001-0127-B-A", "room"], room),
+#                          id_room = ifelse(id == "001-0128-Z-K", rooms[rooms$id == "001-0127-B-A", "id_room"], id_room))
+# 
+double_rooms <- list(c("001-0038-B-S", "001-0039-B-F"), c("001-0127-B-A", "001-0128-Z-K"))
 ```
 
 ## ENVIRONMENT
 ```{r}
-environment <- rooms %>%
+env_t <- rooms %>%
   distinct(room) %>%
   mutate(env = 0) %>%
   mutate(id_room = rooms %>% distinct(id_room) %>% pull() ) %>%
   select(room, id_room, env)
+
+global_environment <- lapply(1:n_subdivisions, function(t){
+  return (env_t)
+})
+
+rm(env_t)
 ```
 
 ## LOCALISATION
 ```{r}
-## Individual localisation stores, for every individual, the localisation where happened his last interaction (and the localisation he will be after -> might be deleted after, depends on the structure of code below)
-## Initially, every patient is in his/her room & HCW in HCW's rest room
-localisation <- admission %>%
-  distinct(id) %>%
-  mutate(localisation_tim1 = NA, localisation_ti = NA) %>%
-  select(id, localisation_tim1, localisation_ti)
-
-
-
-for (i in localisation$id){
-  if (admission[admission$id == i, "status"] == "PA"){
-    localisation[localisation$id == i, "localisation_tim1"] <- rooms[rooms$id == i, "room"]
-  }
-  else{
-    localisation[localisation$id == i, "localisation_tim1"] <- "Restroom"
-  }
-}
+## LOADED WITH .RData (localization-nodscov2.Rmd)
+head(global_localization)
 ```
 
 ## STATUS
 ```{r}
-status <- admission %>%
+status_t <- admission %>%
   distinct(id) %>%
   mutate(status = 0)
+
+global_status <- lapply(1:n_subdivisions, function(t){
+  return(status_t)
+})
+rm(status_t)
 ```
+
 
 ## GLOBAL DATABASE
 ```{r}
-global <- admission %>% 
-  distinct(id) %>%
-  left_join(status, by = "id") %>%
-  left_join(localisation, by = "id") %>%
-  mutate(time = 0)
+## global_localization
+## global_environment
+## global_status
+
+## infered_admission
+## HCW_interacting_id
+
+## begin_date
+## end_date
+## n_subdivisions
 ```
+
+
+
+
+
+
+
+
+
+
+
+<!-- ################################# GARBAGE ############################## -->
+
+
 
 
 
