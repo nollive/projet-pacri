@@ -90,6 +90,11 @@ n_individuals
 
 ```
 
+## INTERACTIONS
+```{r}
+global_interaction <- data_list
+```
+
 ## ROOMS
 ```{r}
 ## LOADED WITH .RData (localisation-nodscov2.Rmd)
@@ -154,16 +159,22 @@ rm(status_t)
 
 ## GLOBAL DATABASE
 ```{r}
+## global_interaction
 ## global_localization
 ## global_environment
 ## global_status
 
-## inferred_admission
-## HCW_interacting_id
 
-## begin_date
-## end_date
+## inferred_admission (if needed?)
+## HCW_interacting_id (if needed?)
+## double_rooms (if needed?)
+
+
+## begin_date (if needed?)
+## end_date (if needed?)
 ## n_subdivisions
+
+## clusters (if needed?)
 ```
 
 
