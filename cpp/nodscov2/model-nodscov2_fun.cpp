@@ -42,14 +42,14 @@ Rcpp::NumericVector Update_environment( //NEED TO BE FIXED
     // THIS FUNCTION USES THE C. METHOD
     // WARNING: IF THERE IS DOUBLE ROOMS, DONT DO THE DOUBLE EXPONENTIAL INACTIVATION OF E(t-1)
     
-    Rcpp::IntegerVector id_rooms = environment_tim1["id"];
+    Rcpp::IntegerVector rooms_environment = environment_tim1["id_room"];
     Rcpp::NumericVector temp_env = environment_tim1["env"];
     Rcpp::NumericVector env_ti = clone(temp_env);
     Rcpp::CharacterVector ids = info_patient_HCW["id"];
     Rcpp::IntegerVector info_patient_HCW_int = info_patient_HCW["info"];
-    Rcpp::IntegerVector rooms = info_patient_HCW["room"];
+    Rcpp::IntegerVector info_patient_HCW_room = info_patient_HCW["room"];
     Rcpp::IntegerVector status = status_tim1["status"];
-    Rcpp::IntegerVector localization = localization_tim1["localization"];
+    Rcpp::IntegerVector localizations = localization_tim1["localization"];
     Rcpp::CharacterVector id_HCW = localization_tim1["id"];
 
     // EXPONENTIAL INACTIVATION 
@@ -59,12 +59,12 @@ Rcpp::NumericVector Update_environment( //NEED TO BE FIXED
     for (int j = 0; j < info_patient_HCW_int.size(); ++j) {
         // INFECTED PATIENTS SHEDDING IN THEIR ROOMS
         if (info_patient_HCW_int[j] == 0 && status[j] == 1){
-            int room_j = rooms[j];
+            int room_j = info_patient_HCW_room[j];
             
             // Search for the index of the room in environment dataframe
             int index_room_j = -1;
-            for (int k = 0; k < id_rooms.size(); ++k) {
-                if (id_rooms[k] == room_j) {
+            for (int k = 0; k < rooms_environment.size(); ++k) {
+                if (rooms_environment[k] == room_j) {
                     index_room_j = k;
                     break;
                 }
@@ -85,11 +85,11 @@ Rcpp::NumericVector Update_environment( //NEED TO BE FIXED
                    break; 
                 }
             }
-            int room_j = localization[index_localization_j];
+            int room_j = localizations[index_localization_j];
             // Search for the index associated to this room
             int index_room_j = -1;
-            for (int k = 0; k < rooms.size(); k++){
-                if (rooms[k] == room_j){
+            for (int k = 0; k < info_patient_HCW_room.size(); k++){
+                if (info_patient_HCW_room[k] == room_j){
                    index_room_j = k;
                    break; 
                 }
@@ -178,37 +178,34 @@ Rcpp::NumericVector Lambda_e (
     Rcpp::DataFrame lambda_tim1,
     Rcpp::DataFrame localization_ti,
     Rcpp::DataFrame environment_ti,
-    Rcpp::DataFrame rooms,
-    Rcpp::DataFrame info_patient_HCW, // "0" IF PATIENT, "1" IF HCW
+    Rcpp::DataFrame info_patient_HCW, 
     const double epsilon,
     const double dt
 ) {
     Rcpp::CharacterVector ids_lambda = lambda_tim1["id"];
-    Rcpp::CharacterVector ids_ind_rooms = rooms["id"]; // IDS OF INDIVIDUALS
-    Rcpp::IntegerVector ids_rooms = rooms["id_room"]; // IDS OF THE ROOMS
-    Rcpp::CharacterVector ids_localization = localization_ti["id"];
-    Rcpp::IntegerVector info_patient_HCW_int = info_patient_HCW["info"];
     Rcpp::NumericVector temp_lambda_e = lambda_tim1["lambda_e"];
     Rcpp::NumericVector lambda_e_ti = clone(temp_lambda_e);
+    Rcpp::CharacterVector ids_localization = localization_ti["id"];
+    Rcpp::IntegerVector info_patient_HCW_int = info_patient_HCW["info"]; // "0" IF PATIENT, "1" IF HCW
+    Rcpp::IntegerVector info_patient_HCW_room = info_patient_HCW["room"];
     Rcpp::NumericVector environment = environment_ti["env"];
-
+    Rcpp::IntegerVector rooms_environment = environment_ti["id_room"];
     Rcpp::IntegerVector localizations = localization_ti["localization"];
-    Rcpp::String id;
 
   for (int j = 0; j < lambda_tim1.nrows(); ++j){
-    id = ids_lambda[j];
+    
     // TWO CASES (PATIENTS AND HCWS)
     // CASE 1. IF INDIVIDUAL j IS A PATIENT --> ENVIRONMENT ACCORDING TO ITS ROOM
     if (info_patient_HCW_int[j] == 0){
+        int room_j = info_patient_HCW_room[j];
         // Search for the index of patient's room
         int index_room = -1;
-            for (int k = 0; k < ids_ind_rooms.size(); ++k) {
-                if (ids_ind_rooms[k] == id) {
+            for (int k = 0; k < rooms_environment.size(); ++k) {
+                if (rooms_environment[k] == room_j) {
                     index_room = k;
                     break;
                 }
             }
-        // ENVIRONMENT AND ROOM HAVE THE SAME INDEX
         lambda_e_ti[j] = epsilon * dt * environment[index_room];
     }
     
@@ -218,7 +215,7 @@ Rcpp::NumericVector Lambda_e (
         // Search for the room where the HCW is located
         int index_localization = -1;
             for (int k = 0; k < ids_localization.size(); ++k) {
-                if (ids_localization[k] == id) {
+                if (ids_localization[k] == ids_lambda[j]) {
                     index_localization = k;
                     break;
                 }
@@ -226,17 +223,15 @@ Rcpp::NumericVector Lambda_e (
         int room_j = localizations[index_localization];
         // Search for the index of this room
         int index_room = -1;
-            for (int k = 0; k < ids_rooms.size(); ++k) {
-                if (ids_rooms[k] == room_j) {
+            for (int k = 0; k < rooms_environment.size(); ++k) {
+                if (rooms_environment[k] == room_j) {
                     index_room = k;
                     break;
                 }
             }
-        // ENVIRONMENT AND ROOM HAVE THE SAME INDEX
         lambda_e_ti[j] = epsilon * dt * environment[index_room];
-
-
     }
   }
+
   return lambda_e_ti;
 };

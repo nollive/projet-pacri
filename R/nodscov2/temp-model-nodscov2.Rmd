@@ -123,6 +123,7 @@ env_t <- rooms %>%
   mutate(env = 0) %>%
   mutate(id_room = rooms %>% distinct(id_room) %>% pull() ) %>%
   select(room, id_room, env)
+env_t$id_room <- as.integer(env_t$id_room)
 
 global_environment <- lapply(1:n_subdivisions, function(t){
   return (env_t)
@@ -135,6 +136,17 @@ rm(env_t)
 ```{r}
 ## LOADED WITH .RData (localization-nodscov2.Rmd)
 head(global_localization)
+
+## REMOVE "NOT HERE" FROM global_localization[[t]]$localization (in order to have an integer vector)
+global_localization <- lapply( 1:n_subdivisions, function(t){
+  loc_t <- global_localization[[t]]
+  loc_t <- loc_t %>% mutate(localization = ifelse(localization == "NOT HERE", -1, localization))
+  loc_t$localization <- as.integer(loc_t$localization)
+  return(loc_t)
+})
+
+
+
 ```
 
 ## STATUS
@@ -162,10 +174,16 @@ rm(lambda_t)
 ```
 ## INFO_PATIENT_HCW
 ```{r}
-info_patient_HCW <- admission %>%
-  mutate(info = ifelse(status == "PA", 0, 1) ) %>%
-  mutate(room = NA) %>% 
+admission_test <- admission %>%
+  mutate(info = ifelse(status == "PE", 1,0)) %>%
+  select(id,info) %>%
+  mutate(id_ind = id) %>% 
+  left_join(rooms, by = c("id_ind" = "id")) %>%
+  mutate(room = ifelse(info == 1, rooms[rooms$id == "PE", "id_room"], room)) %>%
   select(id,info,room)
+admission_test$info <- as.integer(admission_test$info)
+admission_test$room <- as.integer(admission_test$room)
+
 ```
 
 
@@ -190,38 +208,48 @@ info_patient_HCW <- admission %>%
 ## clusters (if needed?)
 ```
 
-## Rcpp
+
+
+
 ```{r}
-# Call the parallel function
-sourceCpp(file.path(cpp_model_path,"model_nodscov2.cpp"))
-a <- List_encountered(id, global_interaction[[t]])
-
-test_status <- data.frame(id = c("ab","ba","cd"), status = c(0,1,1))
-test_lambda <- data.frame(id = c("ab","ba","cd"), lambda_c = 0, lambda_e = 0)
-test_int <- data.frame(from = c("ab","ba","cd"), to = c("ba","ab","ab"))
-test_loc <- data.frame(id = c("ab","ba","cd"), localization = c(1,2,3))
-test_room <- data.frame(id = c("ba","cd"), id_room = c(2,3))
-test_env <- test_room %>% select(id_room) %>% mutate(env = c(200,300), id = id_room) %>% select(id, env)
 beta = 1
-dt = 30
-ti = 1
-a <- List_encountered("ab", test_int)
-b = Lambda_c(test_lambda, test_int, test_status, beta, dt)
-test_info_patient_HCW = data.frame(id = c("ab","ba","cd"), info = c(0,1,1)) # EQUALS TO ADMISSIOn
-
-
 epsilon = 1
+mu = 1
+nu = 1
+dt = 30
+t = 3
 
-c = Lambda_e(test_lambda,  test_loc, test_env, test_room, test_info_patient_HCW, epsilon, dt)
 
-d = Get_t(global_localization,1)
-setdiff(d,global_localization[[1]])
+sourceCpp(file.path(cpp_model_path,"model_nodscov2.cpp"))
+t=1
+ta = Sys.time()
+for (t in 2:n_subdivisions){
+  lambda <- global_lambda[[t]]
+  status <- global_status[[t]]
+  int <- global_interaction[[t]]
+  loc <- global_localization[[t]]
+  env <- global_environment[[t]]
+  env_tm1 <- global_environment[[t-1]]
+  loc_tm1 <- global_localization[[t-1]]
+  status_tm1 <- global_status[[t-1]]
+  lambda_tm1 <- global_lambda[[t-1]]
+  loc_tm1 <- global_localization[[t-1]]
+  id = "001-0007-J-I"
+  a <- List_encountered(id, int)
+  b = Lambda_c(lambda_tm1, int, status, beta, dt)
+  c = Lambda_e(lambda_tm1,  loc, env, admission_test, epsilon, dt)
+  d = Get_t(global_localization,t)
+  e = Update_environment(env_tm1, loc_tm1, status_tm1, admission_test, mu, nu, dt )
+  setdiff(d,global_localization[[t]])
+}
+tb = Sys.time()
+print(tb-ta)
+
+
+
+
+
 ```
-
-
-
-
-
 
 
 
