@@ -217,15 +217,21 @@ epsilon = 1
 mu = 1
 nu = 1
 dt = 30
+tau = 60 * 60 *24
+deltat = dt/tau
 t = 3
 
 
 sourceCpp(file.path(cpp_model_path,"model_nodscov2.cpp"))
 t=1
 ta = Sys.time()
-for (t in 2:n_subdivisions){
+for (t in 2:100){
   lambda <- global_lambda[[t]]
   status <- global_status[[t]]
+  
+  test_status <- status %>% mutate(status = 0)
+  test_lambda <- lambda %>% mutate(lambda_e = 1000, lambda_c = 1000)
+  
   int <- global_interaction[[t]]
   loc <- global_localization[[t]]
   env <- global_environment[[t]]
@@ -236,11 +242,15 @@ for (t in 2:n_subdivisions){
   loc_tm1 <- global_localization[[t-1]]
   id = "001-0007-J-I"
   a <- List_encountered(id, int)
-  b = Lambda_c(lambda_tm1, int, status, beta, dt)
-  c = Lambda_e(lambda_tm1,  loc, env, admission_test, epsilon, dt)
+  b = Lambda_c(lambda_tm1, int, status, beta, deltat)
+  lambda$lambda_c <- b
+  c = Lambda_e(lambda_tm1,  loc, env, admission_test, epsilon, deltat)
+  lambda$lambda_e <- c
   d = Get_t(global_localization,t)
-  e = Update_environment(env_tm1, loc_tm1, status_tm1, admission_test, mu, nu, dt )
+  e = Update_environment(env_tm1, loc_tm1, status_tm1, admission_test, mu, nu, deltat )
+  env$env <- e
   setdiff(d,global_localization[[t]])
+  f = Update_status(test_status, test_lambda)
 }
 tb = Sys.time()
 print(tb-ta)

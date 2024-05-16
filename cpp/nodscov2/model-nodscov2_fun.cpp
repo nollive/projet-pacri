@@ -10,6 +10,27 @@ using namespace std;
 Rcpp::Environment base("package:base");
 Function do_unique = base["unique"];
 
+//////////////////////////////////////////////
+// [[Rcpp::export]]
+Rcpp::NumericVector Update_status(
+    Rcpp::DataFrame status_tim1,
+    Rcpp::DataFrame lambda_ti
+) {
+    Rcpp::NumericVector status_prev = status_tim1["status"];
+    Rcpp::NumericVector lambda_c = lambda_ti["lambda_c"];
+    Rcpp::NumericVector lambda_e = lambda_ti["lambda_c"];
+    Rcpp::NumericVector status_ti = clone(status_prev);
+
+
+    Rcpp::NumericVector FOI = (lambda_ti.nrows(), 1) - exp(- (lambda_c  + lambda_e));
+    for (int j=0; j < lambda_ti.nrows(); j++){
+        if (status_prev[j] == 0 && R::runif(0, 1) <= FOI[j]){
+            status_ti[j] = 1;
+        }
+    };
+
+    return status_ti;
+};
 
 //////////////////////////////////////////////
 // [[Rcpp::export]]
@@ -25,14 +46,14 @@ Rcpp::DataFrame Get_t(
 
 //////////////////////////////////////////////
 // [[Rcpp::export]]
-Rcpp::NumericVector Update_environment( //NEED TO BE FIXED
+Rcpp::NumericVector Update_environment(
     Rcpp::DataFrame environment_tim1,
     Rcpp::DataFrame localization_tim1,
     Rcpp::DataFrame status_tim1,
     Rcpp::DataFrame info_patient_HCW, //(id: id of the individual, info: "0" IF PATIENT, "1" IF HCW, room: room assigned to the individual, easier for patients...) 
     const double mu,
     const double nu,
-    const int dt
+    const int deltat
 ) {
     // THERE IS MULTIPLE WAYS TO ACHIEVE THIS
     // A. (naive) for loop on room ( for loop on individuals (check if patient/HCW and if the localization == room r then check if infected etc))
@@ -53,7 +74,7 @@ Rcpp::NumericVector Update_environment( //NEED TO BE FIXED
     Rcpp::CharacterVector id_HCW = localization_tim1["id"];
 
     // EXPONENTIAL INACTIVATION 
-    env_ti = env_ti * exp(-mu * dt);
+    env_ti = env_ti * exp(-mu * deltat);
     
     // INFECTING INDIVIDUALS SHEDDING
     for (int j = 0; j < info_patient_HCW_int.size(); ++j) {
@@ -70,7 +91,7 @@ Rcpp::NumericVector Update_environment( //NEED TO BE FIXED
                 }
             }
             // UPDATE THE ENVIRONMENT FOR THE INFECTED PATIENT IN THAT ROOM
-            env_ti[index_room_j] += 1 * nu * dt;
+            env_ti[index_room_j] += 1 * nu * deltat;
         } 
 
         // INFECTED HCW SHEDDING IN THE ROOM HE WAS AT t-1
@@ -95,7 +116,7 @@ Rcpp::NumericVector Update_environment( //NEED TO BE FIXED
                 }
             }
             // UPDATE THE ENVIRONMENT FOR THE INFECTED HCW IN THAT ROOM
-            env_ti[index_room_j] += 1 * nu * dt;
+            env_ti[index_room_j] += 1 * nu * deltat;
         }
     }
 
@@ -106,13 +127,13 @@ Rcpp::NumericVector Update_environment( //NEED TO BE FIXED
 // [[Rcpp::export]]
 Rcpp::List List_encountered(
     Rcpp::String id,
-    Rcpp::DataFrame interactions_t
+    Rcpp::DataFrame interaction_ti
 ) {
   Rcpp::List list_id;
-  Rcpp::CharacterVector from = interactions_t["from"];
-  Rcpp::CharacterVector to = interactions_t["to"];
+  Rcpp::CharacterVector from = interaction_ti["from"];
+  Rcpp::CharacterVector to = interaction_ti["to"];
 
-  for (int j = 0; j < interactions_t.nrows(); ++j) {
+  for (int j = 0; j < interaction_ti.nrows(); ++j) {
     if (from[j] == id) {
         Rcpp::String push = to[j];
         list_id.push_back(push);
@@ -135,7 +156,7 @@ Rcpp::NumericVector Lambda_c (
     Rcpp::DataFrame interaction_ti,
     Rcpp::DataFrame status_ti,
     const double beta,
-    const double dt
+    const double deltat
 ) {
     Rcpp::CharacterVector ids = lambda_tim1["id"];
     Rcpp::NumericVector temp_lambda_c = lambda_tim1["lambda_c"];
@@ -165,7 +186,7 @@ Rcpp::NumericVector Lambda_c (
             }
         }
         
-        lambda_c_ti[j] = beta * dt * nb_inf_r;
+        lambda_c_ti[j] = beta * deltat * nb_inf_r;
     }
 
     return lambda_c_ti;
@@ -180,7 +201,7 @@ Rcpp::NumericVector Lambda_e (
     Rcpp::DataFrame environment_ti,
     Rcpp::DataFrame info_patient_HCW, 
     const double epsilon,
-    const double dt
+    const double deltat
 ) {
     Rcpp::CharacterVector ids_lambda = lambda_tim1["id"];
     Rcpp::NumericVector temp_lambda_e = lambda_tim1["lambda_e"];
@@ -206,7 +227,7 @@ Rcpp::NumericVector Lambda_e (
                     break;
                 }
             }
-        lambda_e_ti[j] = epsilon * dt * environment[index_room];
+        lambda_e_ti[j] = epsilon * deltat * environment[index_room];
     }
     
     // CASE 2. IF INDIVIDUAL j IS A HCW --> ENVIRONMENT ACCORDING TO ITS LOCALIZATION
@@ -229,9 +250,11 @@ Rcpp::NumericVector Lambda_e (
                     break;
                 }
             }
-        lambda_e_ti[j] = epsilon * dt * environment[index_room];
+        lambda_e_ti[j] = epsilon * deltat * environment[index_room];
     }
   }
 
   return lambda_e_ti;
 };
+
+
