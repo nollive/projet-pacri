@@ -27,6 +27,18 @@ RcppExport Rcpp::NumericVector Update_status(
 );
 
 
+RcppExport int Incub_period_gamma(
+    double shape,
+     double scale
+);
+
+
+RcppExport int Incub_period_lognormal(
+    double meanlog,
+    double sdlog
+);
+
+
 RcppExport Rcpp::NumericVector Update_environment(
     Rcpp::DataFrame environment_tim1,
     Rcpp::DataFrame localization_ti,

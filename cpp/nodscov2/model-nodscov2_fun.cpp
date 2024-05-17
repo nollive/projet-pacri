@@ -259,4 +259,22 @@ Rcpp::NumericVector Lambda_e (
   return lambda_e_ti;
 };
 
+//////////////////////////////////////////////
+// [[Rcpp::export]]
+int Incub_period_gamma(double shape, double scale) {
+    // Incubation period -> Gamma distribution (shape,scale)
+    double incubation_period_seconds = R::rgamma(shape, scale);
+    int incubation_period_subdivisions = static_cast<int>(incubation_period_seconds / 30.0);
+    
+    return incubation_period_subdivisions;
+};
 
+//////////////////////////////////////////////
+// [[Rcpp::export]]
+int Incub_period_lognormal(double meanlog, double sdlog) {
+    // Incubation period -> Log-normal distribution (meanlog, sdlog)
+    double incubation_period_seconds = R::rlnorm(meanlog, sdlog);
+    int incubation_period_subdivisions = static_cast<int>(incubation_period_seconds / 30.0);
+    
+    return incubation_period_subdivisions;
+};
