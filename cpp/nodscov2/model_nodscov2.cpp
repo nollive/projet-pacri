@@ -25,10 +25,10 @@ Rcpp::List simulation(
     double tau = 60 * 60 * 24; //seconds in a day
     double deltat = dt/(tau);
 
-    Rcpp::DataFrame environment_ti;
+    Rcpp::DataFrame environment_ti = Get_t(global_environment, 0);
     Rcpp::DataFrame environment_tim1;
     
-    Rcpp::DataFrame status_ti;
+    Rcpp::DataFrame status_ti =  Get_t(global_status, 0);
     Rcpp::DataFrame status_tim1;
 
     Rcpp::DataFrame interaction_ti;
@@ -38,10 +38,14 @@ Rcpp::List simulation(
     Rcpp::DataFrame lambda_template;
     lambda_template = Get_t(global_lambda, 0);
     
-    Rcpp::DataFrame localization_ti;
+    Rcpp::DataFrame localization_ti = Get_t(global_localization, 0);
     Rcpp::DataFrame localization_tim1;
-    
 
+    // Shedding of the index patient
+    environment_ti["env"] = Update_environment(environment_ti, localization_ti , status_ti, info_patient_HCW, mu, nu, deltat);
+    global_environment[0] = environment_ti;
+    // update status for time t == 0?
+    
     ////////////////
     // SIMULATION //
     ////////////////

@@ -214,7 +214,7 @@ load("~/CNAM-PASTEUR-FIXE/projet-pacri/test-model.RData")
 sourceCpp(file.path(cpp_model_path,"model_nodscov2.cpp"))
 
 beta = 1
-epsilon = 1
+epsilon = 100
 mu = 1
 nu = 1000
 dt = 30
