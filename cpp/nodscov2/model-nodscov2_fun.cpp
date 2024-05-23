@@ -97,7 +97,7 @@ Rcpp::DataFrame Update_status_bis(
     Rcpp::DataFrame global_status_updated = clone(global_status);
     Rcpp::IntegerVector t_inf_ti = clone(t_inf_tim1);
     Rcpp::IntegerVector t_recover_ti = clone(t_recover_tim1);
-    Rcpp::IntegerVector inf_room_ti = clone(t_inf_tim1);
+    Rcpp::IntegerVector inf_room_ti = clone(inf_room_tim1);
 
     Rcpp::NumericVector FOI = (lambda_ti.nrows(), 1) - exp(- (lambda_c  + lambda_e));
 
