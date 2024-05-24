@@ -14,7 +14,7 @@ Rcpp::List simulation(
     Rcpp::List global_environment,
     Rcpp::List global_lambda,
     Rcpp::DataFrame global_status,
-    Rcpp::DataFrame info_patient_HCW,
+    Rcpp::DataFrame admission,
     double beta,
     double epsilon,
     double nu,
@@ -43,7 +43,7 @@ Rcpp::List simulation(
     Rcpp::DataFrame localization_tim1;
 
     // Shedding of the index patient
-    environment_ti["env"] = Update_environment(environment_ti, localization_ti , status_ti, info_patient_HCW, mu, nu, deltat);
+    environment_ti["env"] = Update_environment(environment_ti, localization_ti , status_ti, admission, mu, nu, deltat);
     global_environment[0] = environment_ti;
     // update status for time t == 0?
     
@@ -61,21 +61,21 @@ Rcpp::List simulation(
         environment_tim1 = Get_t(global_environment, t-1);
         environment_ti = clone(environment_tim1);
         localization_ti = Get_t(global_localization, t);
-        environment_ti["env"] = Update_environment(environment_ti, localization_ti, status_tim1, info_patient_HCW, mu, nu, deltat);
+        environment_ti["env"] = Update_environment(environment_ti, localization_ti, status_tim1, admission, mu, nu, deltat);
         global_environment[t] = environment_ti;
 
         ///////////////////
         // Update Lambda //
         ///////////////////
         lambda_ti = clone(lambda_template);
-        lambda_ti["lambda_e"] = Lambda_e(lambda_template, localization_ti, environment_ti, info_patient_HCW, epsilon, deltat);
+        lambda_ti["lambda_e"] = Lambda_e(lambda_template, localization_ti, environment_ti, admission, epsilon, deltat);
         lambda_ti["lambda_c"] = Lambda_c(lambda_template, interaction_ti, status_tim1, beta, deltat);
         global_lambda[t] = lambda_ti;
         
         ///////////////////////
         // Update the status //
         ///////////////////////
-        Rcpp::DataFrame temp = Update_status_bis(global_status, lambda_ti,info_patient_HCW, interaction_ti, localization_ti, t);
+        Rcpp::DataFrame temp = Update_status_bis(global_status, lambda_ti,admission, interaction_ti, localization_ti, t);
         global_status = clone(temp);
 
     }

@@ -71,14 +71,14 @@ Rcpp::IntegerVector Get_status_t(
 int Get_status_j(
     Rcpp::String id,
     Rcpp::DataFrame global_status,
-    Rcpp::DataFrame info_patient_HCW,
+    Rcpp::DataFrame admission,
     int t
 ) {
-    int status_j = -1; // if returns -1 --> error (id not in info_patient_HCW)
-    Rcpp::CharacterVector ids = info_patient_HCW["id"];
+    int status_j = -1; // if returns -1 --> error (id not in admission)
+    Rcpp::CharacterVector ids = admission["id"];
     Rcpp::IntegerVector status = Get_status_t(global_status,t);
     int index_j = -1;
-    for (int k = 0; k < info_patient_HCW.nrows(); k++){
+    for (int k = 0; k < admission.nrows(); k++){
         if (id == ids[k]){
             index_j = k;
         }
@@ -94,7 +94,7 @@ int Get_status_j(
 Rcpp::String Sample_inf(
     Rcpp::String id,
     Rcpp::List list_inf_encountered,
-    Rcpp::DataFrame info_patient_HCW,
+    Rcpp::DataFrame admission,
     Rcpp::DataFrame localization_ti,
     double lambda_e_j,
     double lambda_c_j
@@ -119,7 +119,7 @@ Rcpp::String Sample_inf(
 
     } else if (lambda_c_j == 0){ // NO CONTACTS -> ENV
         Rcpp::String env_string("ENVIRONMENT-");
-        int room_j = Get_loc_j(id, info_patient_HCW, localization_ti);
+        int room_j = Get_loc_j(id, admission, localization_ti);
         Rcpp::String room_string = std::to_string(room_j);
         Rcpp::String res(env_string);
         res += room_string; 
@@ -148,7 +148,7 @@ Rcpp::String Sample_inf(
         
         // RETURN THE CAUSE OF INFECTION
         if (sampled == env_string){ // IF ENVIRONMENT
-            int room_j = Get_loc_j(id, info_patient_HCW, localization_ti);
+            int room_j = Get_loc_j(id, admission, localization_ti);
             Rcpp::String room_string = std::to_string(room_j);
             Rcpp::String res(env_string);
             res += room_string; 
@@ -167,7 +167,7 @@ Rcpp::String Sample_inf(
 Rcpp::DataFrame Update_status_bis(
     Rcpp::DataFrame global_status,
     Rcpp::DataFrame lambda_ti,
-    Rcpp::DataFrame info_patient_HCW,
+    Rcpp::DataFrame admission,
     Rcpp::DataFrame interactions_ti,
     Rcpp::DataFrame localization_ti,
     int t
@@ -177,9 +177,9 @@ Rcpp::DataFrame Update_status_bis(
     
     Rcpp::IntegerVector status_tim1 = Get_status_t(global_status, t);
 
-    Rcpp::CharacterVector ids = info_patient_HCW["id"];
-    Rcpp::IntegerVector info_int = info_patient_HCW["info"];
-    Rcpp::IntegerVector info_room = info_patient_HCW["room"];
+    Rcpp::CharacterVector ids = admission["id"];
+    Rcpp::IntegerVector info_int = admission["info"];
+    Rcpp::IntegerVector info_room = admission["room"];
     
     Rcpp::IntegerVector t_inf_tim1 = global_status["t_inf"];
     Rcpp::IntegerVector t_recover_tim1 = global_status["t_recover"];
@@ -205,16 +205,16 @@ Rcpp::DataFrame Update_status_bis(
             if (info_int[j] == 0){
                 room_j= info_room[j];
             } else if (info_int[j] == 1){
-                room_j = Get_loc_HCW(ids[j], info_patient_HCW, localization_ti);
+                room_j = Get_loc_HCW(ids[j], admission, localization_ti);
             }
              inf_room_ti[j] = room_j;
             
             // CAUSE OF INFECTION
             Rcpp::String id_j = ids[j];
-            Rcpp::List list_inf_encountered = List_inf_encountered(id_j, interactions_ti, global_status, info_patient_HCW, t);
+            Rcpp::List list_inf_encountered = List_inf_encountered(id_j, interactions_ti, global_status, admission, t);
             double lambda_e_j = lambda_e[j];
             double lambda_c_j = lambda_c[j];
-            Rcpp::String sampled_j = Sample_inf(ids[j], list_inf_encountered, info_patient_HCW, localization_ti, lambda_e_j, lambda_c_j);
+            Rcpp::String sampled_j = Sample_inf(ids[j], list_inf_encountered, admission, localization_ti, lambda_e_j, lambda_c_j);
             inf_by_ti[j] = sampled_j;
             }
     };
@@ -245,7 +245,7 @@ Rcpp::NumericVector Update_environment(
     Rcpp::DataFrame environment_tim1,
     Rcpp::DataFrame localization_ti,
     Rcpp::IntegerVector status_tim1,
-    Rcpp::DataFrame info_patient_HCW, //(id: id of the individual, info: "0" IF PATIENT, "1" IF HCW, room: room assigned to the individual, easier for patients...) 
+    Rcpp::DataFrame admission, //(id: id of the individual, info: "0" IF PATIENT, "1" IF HCW, room: room assigned to the individual, easier for patients...) 
     const double mu,
     const double nu,
     const double deltat
@@ -261,9 +261,9 @@ Rcpp::NumericVector Update_environment(
     Rcpp::IntegerVector rooms_environment = environment_tim1["id_room"];
     Rcpp::NumericVector temp_env = environment_tim1["env"];
     Rcpp::NumericVector env_ti = clone(temp_env);
-    Rcpp::CharacterVector ids = info_patient_HCW["id"];
-    Rcpp::IntegerVector info_patient_HCW_int = info_patient_HCW["info"];
-    Rcpp::IntegerVector info_patient_HCW_room = info_patient_HCW["room"];
+    Rcpp::CharacterVector ids = admission["id"];
+    Rcpp::IntegerVector admission_int = admission["info"];
+    Rcpp::IntegerVector admission_room = admission["room"];
     Rcpp::IntegerVector localizations = localization_ti["localization"];
     Rcpp::CharacterVector id_HCW = localization_ti["id"];
 
@@ -271,10 +271,10 @@ Rcpp::NumericVector Update_environment(
     env_ti = env_ti * exp(-mu * deltat);
     
     // INFECTING INDIVIDUALS SHEDDING
-    for (int j = 0; j < info_patient_HCW.nrows(); ++j) {
+    for (int j = 0; j < admission.nrows(); ++j) {
         // INFECTED PATIENTS SHEDDING IN THEIR ROOMS
-        if (info_patient_HCW_int[j] == 0 && status_tim1[j] == 1){
-            int room_j = info_patient_HCW_room[j];
+        if (admission_int[j] == 0 && status_tim1[j] == 1){
+            int room_j = admission_room[j];
             // Search for the index of the room in environment dataframe
             int index_room_j = -1;
             for (int k = 0; k < rooms_environment.size(); ++k) {
@@ -289,7 +289,7 @@ Rcpp::NumericVector Update_environment(
         } 
 
         // INFECTED HCW SHEDDING IN THE ROOM HE WAS AT t-1
-        if (info_patient_HCW_int[j] == 1 && status_tim1[j] == 1){
+        if (admission_int[j] == 1 && status_tim1[j] == 1){
             // WARNING: LOCALIZATION INDEX != INDIVIDUAL INDEX ETC
             // Search for the room where was the HCW j at t-1
             int index_localization_j = -1;
@@ -350,14 +350,14 @@ Rcpp::List List_inf_encountered(
     Rcpp::String id,
     Rcpp::DataFrame interaction_ti,
     Rcpp::DataFrame global_status,
-    Rcpp::DataFrame info_patient_HCW,
+    Rcpp::DataFrame admission,
     int t
 ) {
     Rcpp::List list_encountered = List_encountered(id, interaction_ti);
     Rcpp::List list_inf_encountered;
     for (int j = 0; j < list_encountered.size(); j++){
         Rcpp::String id_encountered = list_encountered[j];
-        if (Get_status_j(id_encountered, global_status, info_patient_HCW, t) == 1){
+        if (Get_status_j(id_encountered, global_status, admission, t) == 1){
             list_inf_encountered.push_back(id_encountered);
         }
     }
@@ -417,7 +417,7 @@ Rcpp::NumericVector Lambda_e (
     Rcpp::DataFrame lambda_tim1,
     Rcpp::DataFrame localization_ti,
     Rcpp::DataFrame environment_ti,
-    Rcpp::DataFrame info_patient_HCW, 
+    Rcpp::DataFrame admission, 
     const double epsilon,
     const double deltat
 ) {
@@ -425,8 +425,8 @@ Rcpp::NumericVector Lambda_e (
     Rcpp::NumericVector temp_lambda_e = lambda_tim1["lambda_e"];
     Rcpp::NumericVector lambda_e_ti = clone(temp_lambda_e);
     Rcpp::CharacterVector ids_localization = localization_ti["id"];
-    Rcpp::IntegerVector info_patient_HCW_int = info_patient_HCW["info"]; // "0" IF PATIENT, "1" IF HCW
-    Rcpp::IntegerVector info_patient_HCW_room = info_patient_HCW["room"];
+    Rcpp::IntegerVector admission_int = admission["info"]; // "0" IF PATIENT, "1" IF HCW
+    Rcpp::IntegerVector admission_room = admission["room"];
     Rcpp::NumericVector environment = environment_ti["env"];
     Rcpp::IntegerVector rooms_environment = environment_ti["id_room"];
     Rcpp::IntegerVector localizations = localization_ti["localization"];
@@ -435,8 +435,8 @@ Rcpp::NumericVector Lambda_e (
     
     // TWO CASES (PATIENTS AND HCWS)
     // CASE 1. IF INDIVIDUAL j IS A PATIENT --> ENVIRONMENT ACCORDING TO ITS ROOM
-    if (info_patient_HCW_int[j] == 0){
-        int room_j = info_patient_HCW_room[j];
+    if (admission_int[j] == 0){
+        int room_j = admission_room[j];
         // Search for the index of patient's room
         int index_room = -1;
             for (int k = 0; k < rooms_environment.size(); ++k) {
@@ -450,7 +450,7 @@ Rcpp::NumericVector Lambda_e (
     
     // CASE 2. IF INDIVIDUAL j IS A HCW --> ENVIRONMENT ACCORDING TO ITS LOCALIZATION
     // WARNING, LOCALIZATION DF INDEX != LAMBDA DF INDEX ETC
-    if (info_patient_HCW_int[j] == 1){
+    if (admission_int[j] == 1){
         // Search for the room where the HCW is located
         int index_localization = -1;
             for (int k = 0; k < ids_localization.size(); ++k) {
@@ -499,14 +499,14 @@ int Incub_period_lognormal() {
 // [[Rcpp::export]]
 int Get_loc_HCW(
     Rcpp::String id_HCW,
-    Rcpp::DataFrame info_patient_HCW,
+    Rcpp::DataFrame admission,
     Rcpp::DataFrame localization_ti
 ) {
     int localization = -1;
-    Rcpp::CharacterVector ids = info_patient_HCW["id"];
+    Rcpp::CharacterVector ids = admission["id"];
     Rcpp::CharacterVector ids_HCW = localization_ti["id"];
     Rcpp::IntegerVector localizations_HCW = localization_ti["localization"];
-    Rcpp::IntegerVector status = info_patient_HCW["info"];
+    Rcpp::IntegerVector status = admission["info"];
     
     int index_ind = -1;
     for (int k = 0; k < ids.size(); k++){
@@ -537,12 +537,12 @@ int Get_loc_HCW(
 // [[Rcpp::export]]
 int Get_loc_j(
     Rcpp::String id,
-    Rcpp::DataFrame info_patient_HCW,
+    Rcpp::DataFrame admission,
     Rcpp::DataFrame localization_ti
 ) {
-    Rcpp::CharacterVector ids = info_patient_HCW["id"];
-    Rcpp::IntegerVector info = info_patient_HCW["info"];
-    Rcpp::IntegerVector rooms = info_patient_HCW["room"];
+    Rcpp::CharacterVector ids = admission["id"];
+    Rcpp::IntegerVector info = admission["info"];
+    Rcpp::IntegerVector rooms = admission["room"];
     // Search for individual's index
     int index_j = -1;
     for (int k = 0; k < ids.size(); k++){
@@ -556,7 +556,7 @@ int Get_loc_j(
         return rooms[index_j];
     // IND IS A HCW --> LOCALIZATION
     } else if (info[index_j] == 1){
-        return Get_loc_HCW(id, info_patient_HCW, localization_ti);
+        return Get_loc_HCW(id, admission, localization_ti);
     // IF ISSUE -> RETURNS -1
     } else {
         return -1;

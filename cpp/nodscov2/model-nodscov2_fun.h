@@ -29,7 +29,7 @@ RcppExport Rcpp::NumericVector Update_environment(
     Rcpp::DataFrame environment_tim1,
     Rcpp::DataFrame localization_ti,
     Rcpp::IntegerVector status_tim1,
-    Rcpp::DataFrame info_patient_HCW, //(id: id of the individual, info: "0" IF PATIENT, "1" IF HCW, room: room assigned to the individual, easier for patients...) 
+    Rcpp::DataFrame admission, //(id: id of the individual, info: "0" IF PATIENT, "1" IF HCW, room: room assigned to the individual, easier for patients...) 
     const double mu,
     const double nu,
     const double deltat
@@ -45,7 +45,7 @@ RcppExport Rcpp::List List_inf_encountered(
     Rcpp::String id,
     Rcpp::DataFrame interaction_ti,
     Rcpp::DataFrame global_status,
-    Rcpp::DataFrame info_patient_HCW,
+    Rcpp::DataFrame admission,
     int t
 );
 
@@ -61,7 +61,7 @@ RcppExport Rcpp::NumericVector Lambda_e (
     Rcpp::DataFrame lambda_tim1,
     Rcpp::DataFrame localization_ti,
     Rcpp::DataFrame environment_ti,
-    Rcpp::DataFrame info_patient_HCW, 
+    Rcpp::DataFrame admission, 
     const double epsilon,
     const double deltat
 );
@@ -79,14 +79,14 @@ RcppExport Rcpp::IntegerVector Get_status_t(
 RcppExport int Get_status_j(
     Rcpp::String id,
     Rcpp::DataFrame global_status,
-    Rcpp::DataFrame info_patient_HCW,
+    Rcpp::DataFrame admission,
     int t
 );
 
 RcppExport Rcpp::String Sample_inf(
     Rcpp::String id,
     Rcpp::List list_inf_encountered,
-    Rcpp::DataFrame info_patient_HCW,
+    Rcpp::DataFrame admission,
     Rcpp::DataFrame localization_ti,
     double lambda_e_j,
     double lambda_c_j
@@ -101,7 +101,7 @@ RcppExport Rcpp::NumericVector Update_status(
 RcppExport Rcpp::DataFrame Update_status_bis(
     Rcpp::DataFrame global_status,
     Rcpp::DataFrame lambda_ti,
-    Rcpp::DataFrame info_patient_HCW,
+    Rcpp::DataFrame admission,
     Rcpp::DataFrame interactions_ti,
     Rcpp::DataFrame localization_ti,
     int t
@@ -109,13 +109,13 @@ RcppExport Rcpp::DataFrame Update_status_bis(
 
 RcppExport int Get_loc_HCW(
     Rcpp::String id_HCW,
-    Rcpp::DataFrame info_patient_HCW,
+    Rcpp::DataFrame admission,
     Rcpp::DataFrame localization_ti
 );
 
 RcppExport int Get_loc_j(
     Rcpp::String id,
-    Rcpp::DataFrame info_patient_HCW,
+    Rcpp::DataFrame admission,
     Rcpp::DataFrame localization_ti
 ); 
 #endif
