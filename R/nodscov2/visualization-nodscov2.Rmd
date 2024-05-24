@@ -1,0 +1,212 @@
+---
+title: "visualization-nodscov2"
+author: "Olivier GAUFRÈS"
+date: "2024-05-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+```
+
+```{r}
+wd <- getwd()
+knitr::opts_chunk$set(root.dir = wd)
+
+data_path <- file.path(wd,"..", "..", "data")
+nodscov2_path <- file.path(data_path, "data-nodscov2")
+cpp_path <-  file.path(wd,"..", "..", "cpp")
+cpp_model_path <- file.path(cpp_path,"nodscov2")
+```
+
+```{r}
+id_sim <- "01"
+load(file.path(sim_nodscov2_path, paste0(id_sim, "-", "simulation-nodscov2.RData")))
+```
+
+## Vizualisation
+```{r}
+## Number of infected over time
+counts <- sapply(1:n_subdivisions, function(t) {
+  sum(test[["global_status"]]$t_inf <= t &
+        test[["global_status"]]$t_recover >= t &
+        test[["global_status"]]$t_inf != -1)
+})
+
+infected_over_time <- data.frame(time = 1:n_subdivisions, infected_count = counts)
+
+ggplot(infected_over_time, aes(x = time * 30 + begin_date, y = infected_count)) +
+  geom_line(color = "blue") +
+  labs(title = "Number of Infected Individuals Over Time",
+       x = "Time",
+       y = "Number of Infected Individuals") +
+  theme_bw()+
+  theme(axis.text.x=element_text(angle=45, hjust=1))
+
+```
+
+## Viral load
+```{r}
+viral_load_over_time <- do.call(rbind, lapply(1:length(test[["global_environment"]]), function(t) {
+  data.frame(time = begin_date + 30 * t,
+             room = test[["global_environment"]][[t]]$room,
+             viral_load = test[["global_environment"]][[t]]$env)
+}))
+
+ggplot(viral_load_over_time, aes(x = time, y = viral_load, color = factor(room))) +
+  geom_line() +
+  labs(title = "Viral Load in Rooms Over Time",
+       x = "Time",
+       y = "Viral Load",
+       color = "Room") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45, hjust=1))
+```
+
+
+## FOI
+```{r}
+hcw_id <- admission %>% filter(status == "PE") %>% pull(id)
+
+
+FOI_over_time <- do.call(rbind, lapply(1:length(test[["global_lambda"]]), function(t) {
+  data.frame(time = begin_date + 30 * t,
+             id = test[["global_lambda"]][[t]]$id,
+             lambda_e = test[["global_lambda"]][[t]]$lambda_e,
+             lambda_c = test[["global_lambda"]][[t]]$lambda_c,
+             status = ifelse(test[["global_lambda"]][[t]]$id %in% hcw_id, "PE", "PA"))
+}))
+
+ggplot(FOI_over_time, aes(x = time)) +
+  geom_line(aes(y = lambda_e, colour = "lambda_e (environment)" ), alpha = 0.5) +
+  geom_line(aes(y = lambda_c, colour = "lambda_c (close-contact)" ), alpha = 0.5) +
+  labs(title = "Lambda Over Time",
+       x = "Time",
+       y = "Lambda",
+       color = "Lambda") +
+  facet_grid(cols = vars(status)) + 
+  theme_bw() + 
+  theme(axis.text.x=element_text(angle=45, hjust=1))
+```
+
+
+```{r}
+FOI_over_time <- FOI_over_time %>% mutate(p_inf = 1 - exp(-lambda_e - lambda_c))
+
+ggplot(FOI_over_time, aes(x = time)) +
+  geom_line(aes(y = lambda_e, colour = "P_inf" )) +
+  labs(title = "Probability of infection Over Time",
+       x = "Time",
+       y = "P_inf",
+       color = "P_inf") +
+  facet_grid(cols = vars(status)) + 
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45, hjust=1))
+
+```
+
+
+## REBUILD GLOBAL_INTERACTION WITH CORRECT LOCALIZATION
+```{r}
+test_global_int <- global_interaction
+
+# FOR EACH t
+for (t in 1:length(test_global_int)) {
+  interactions <- test_global_int[[t]]
+  cluster <- clusters[[t]]
+  
+  # FOR EACH INT 
+  for (j in 1:nrow(interactions)) {
+    interaction <- interactions[j, ]
+    id_from <- interaction$from ##from and to are in the same cluster
+    # CLUSTER ASSOCIATED WITH THIS INTERACTION
+    cluster_id <- NA  
+    for (k in 1:length(cluster)) {
+      if (id_from %in% cluster[[k]]) {
+        cluster_id <- k
+        break
+      }
+    }
+    localization <- "NOT ASSIGNED"
+    # ID ROOM
+    if (interaction$from_status == "PA" & interaction$to_status == "PA"){ ## IF PA-PA
+      localization1 <- rooms[rooms$id == interaction$from, "id_room"] ## DOUBLE ROOM, FROM/TO SAME THING
+      localization2 <- rooms[rooms$id == interaction$to, "id_room"]
+      localization <- ifelse(localization1 == localization2, localization1, "PROBLEM PA-PA NOT SAME ROOM")
+    } else{ # IF PE-PE OR PA-PE OR PE-PA -> CAUTION, GLOBAL_LOCALIZATION ONLY TRACK HCW (PE) LOCALIZATION, WE CANNOT ACCESS TO CLUSTER'S LOCALIZATION USING A PATIENT (PA) ID
+      patient_id <- ifelse(interaction$from_status == "PA", interaction$to, interaction$from)
+      patient_room <- rooms[rooms$id == patient_id, "id_room"]
+      localization <- global_localization[[t]] %>% filter(id == patient_id) %>% pull(localization)
+    }
+
+    # EDIT GLOBAL_INTERACTION
+    test_global_int[[t]]$cluster_id[j] <- cluster_id
+    test_global_int[[t]]$localization[j] <- localization
+  }
+}
+## OK
+loc_reel <- global_localization[[100]] %>% filter(localization != -1) %>% filter(id %in% test_global_int[[100]]$from | id %in% test_global_int[[100]]$to )
+int_test <- test_global_int[[100]]
+
+
+```
+
+
+## INFECTION CHAIN
+```{r}
+library(epicontacts)
+
+## linelist object
+linelist <- left_join(admission_test, res_status, by = join_by(id))
+linelist <- linelist %>%
+  mutate(type = ifelse(info == 0, "PATIENT", "HEALTHCARE WORKER")) %>%
+  mutate(type = ifelse(id == id_index, "INDEX", type)) 
+
+env_linelist <- data.frame(id = paste0("ENVIRONMENT-",rooms %>% distinct(id_room, .keep_all = TRUE) %>% pull(id_room)),
+                           type = "ROOM",
+                           room = rooms %>% distinct(id_room, .keep_all = TRUE) %>% pull(id_room))
+
+linelist <- bind_rows(linelist,env_linelist)
+
+
+## contacts object
+environmental_contacts <- res_status %>%
+  filter(grepl("ENVIRONMENT", inf_by)) %>%
+  mutate(from = inf_by, to = id, time = t_inf) %>%
+  mutate(cause = "ENVIRONMENT") %>% 
+  select(from, to, t_inf, t_recover, inf_by, cause)
+
+
+close_contacts <- res_status %>%
+  filter(grepl("CONTACT", inf_by)) %>%
+  mutate(from = gsub("CONTACT-", "", inf_by), to = id, time = t_inf) %>%
+  mutate(cause = "CONTACT") %>% 
+  
+  select(from, to, t_inf, t_recover, inf_by, cause)
+
+inf_contacts_df <- bind_rows(environmental_contacts, close_contacts)
+inf_contacts_df <- inf_contacts_df %>% mutate(inf_interval = paste0("{",t_inf,";", t_recover,"}"))
+
+## epicontacts object
+x <- make_epicontacts(linelist = linelist,
+                      contacts = inf_contacts_df,
+                      id = "id",
+                      from = "from",
+                      to = "to",
+                      directed = FALSE)
+
+## plot epicontacts
+plot(x,
+     node_color = "type",
+     edge_color = "cause",
+     edge_label = "inf_interval",
+     label = "room",
+     thin = TRUE)
+
+
+## NOT WORKING
+#node_colors <- setNames(c("red", "blue", "black","darkgreen"), c("PATIENT", "HEALTHCARE WORKER", "INDEX","ROOM"))
+```

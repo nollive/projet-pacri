@@ -176,6 +176,7 @@ rm(lambda_t)
 ```
 ## INFO_PATIENT_HCW
 ```{r}
+##CHANGE STATUS FOR INFO  (PA -> 0 AND PE -> 1)
 admission_test <- admission %>%
   mutate(info = ifelse(status == "PE", 1,0)) %>%
   select(id,info) %>%
@@ -213,38 +214,35 @@ admission_test$room <- as.integer(admission_test$room)
 
 ```{r}
 #load("~/CNAM-PASTEUR-FIXE/projet-pacri/test-model.RData")
-sourceCpp(file.path(cpp_model_path,"model_nodscov2.cpp"))
+sourceCpp(file.path(cpp_model_path,"model-nodscov2.cpp"))
 
-test_status <- global_status
-
-test_lambda <- global_lambda
-beta = 100
-epsilon = 100
-mu = 5
-nu = 5
-dt = 30
-tau = 60 * 60 *24
-deltat = dt/tau
-
+## PARAMETERS
+beta <- 200
+epsilon <- 50
+mu <- 5
+nu <- 5
+dt <- 30
+tau <- 60 * 60 *24
+deltat <- dt/tau
 #INDEX
-test_status <- test_status %>% mutate(t_inf = ifelse(id == "001-0038-B-S", as.integer(1), t_inf ),
-                                      t_recover = ifelse(id == "001-0038-B-S", as.integer(1000), t_recover ),
-                                      inf_room = ifelse(id == "001-0038-B-S", rooms[rooms$id == "001-0038-B-S", "id_room"], inf_room),
-                                      inf_by = "INDEX")
+id_index <- "001-0038-B-S"
+test_status <- global_status %>% mutate(t_inf = ifelse(id == id_index, as.integer(1), t_inf ),
+                                      t_recover = ifelse(id == id_index, as.integer(1000), t_recover ),
+                                      inf_room = ifelse(id ==id_index, rooms[rooms$id == id_index, "id_room"], inf_room),
+                                      inf_by = ifelse(id == id_index, "INDEX", inf_by))
 
 
-t = 1001
-id = "001-0038-B-S"
+
+sourceCpp(file.path(cpp_model_path,"model-nodscov2.cpp"))
+
 a <- Update_status_bis(test_status, test_lambda, admission_test, global_interaction[[2]], global_localization[[2]], t=2)
 b <- Get_status_t(a,300)
-sourceCpp(file.path(cpp_model_path,"model_nodscov2.cpp"))
-
 loc_test <- Get_loc_HCW("001-0001-D-J",admission_test, global_localization[[1]])
 Get_status_j("001-0038-B-S", test_status, admission_test, 1)
 Get_loc_j("001-0021-S-G", admission_test, global_localization[[1]])
 
 
-tsima = Sys.time()
+tsima <- Sys.time()
 test <- simulation(global_interaction = global_interaction,
            global_localization = global_localization,
            global_environment = global_environment,
@@ -257,11 +255,11 @@ test <- simulation(global_interaction = global_interaction,
            mu = mu,
            dt = dt
            )
-tsimb = Sys.time()
+tsimb <- Sys.time()
 print(tsimb-tsima)
 
-res_lambda = test[["global_lambda"]]
-res_status = test[["global_status"]]
+res_lambda <- test[["global_lambda"]]
+res_status <- test[["global_status"]]
 ```
 
 
@@ -349,7 +347,6 @@ ggplot(FOI_over_time, aes(x = time)) +
 
 ## REBUILD GLOBAL_INTERACTION WITH CORRECT LOCALIZATION
 ```{r}
-
 test_global_int <- global_interaction
 
 # FOR EACH t
@@ -360,7 +357,7 @@ for (t in 1:length(test_global_int)) {
   # FOR EACH INT 
   for (j in 1:nrow(interactions)) {
     interaction <- interactions[j, ]
-    id_from = interaction$from ##from and to are in the same cluster
+    id_from <- interaction$from ##from and to are in the same cluster
     # CLUSTER ASSOCIATED WITH THIS INTERACTION
     cluster_id <- NA  
     for (k in 1:length(cluster)) {
@@ -389,7 +386,7 @@ for (t in 1:length(test_global_int)) {
 ## OK
 loc_reel <- global_localization[[100]] %>% filter(localization != -1) %>% filter(id %in% test_global_int[[100]]$from | id %in% test_global_int[[100]]$to )
 int_test <- test_global_int[[100]]
-## ISSUES WITH LOC = -1???
+
 
 ```
 
@@ -398,11 +395,56 @@ int_test <- test_global_int[[100]]
 ```{r}
 library(epicontacts)
 
+## linelist object
+linelist <- left_join(admission_test, res_status, by = join_by(id))
+linelist <- linelist %>%
+  mutate(type = ifelse(info == 0, "PATIENT", "HEALTHCARE WORKER")) %>%
+  mutate(type = ifelse(id == id_index, "INDEX", type)) 
 
-linelist = do.call(rbind,test_global_int) %>% select(-cluster_id)
+env_linelist <- data.frame(id = paste0("ENVIRONMENT-",rooms %>% distinct(id_room, .keep_all = TRUE) %>% pull(id_room)),
+                           type = "ROOM",
+                           room = rooms %>% distinct(id_room, .keep_all = TRUE) %>% pull(id_room))
+
+linelist <- bind_rows(linelist,env_linelist)
 
 
-contact = NA
+## contacts object
+environmental_contacts <- res_status %>%
+  filter(grepl("ENVIRONMENT", inf_by)) %>%
+  mutate(from = inf_by, to = id, time = t_inf) %>%
+  mutate(cause = "ENVIRONMENT") %>% 
+  select(from, to, t_inf, t_recover, inf_by, cause)
+
+
+close_contacts <- res_status %>%
+  filter(grepl("CONTACT", inf_by)) %>%
+  mutate(from = gsub("CONTACT-", "", inf_by), to = id, time = t_inf) %>%
+  mutate(cause = "CONTACT") %>% 
+  
+  select(from, to, t_inf, t_recover, inf_by, cause)
+
+inf_contacts_df <- bind_rows(environmental_contacts, close_contacts)
+inf_contacts_df <- inf_contacts_df %>% mutate(inf_interval = paste0("{",t_inf,";", t_recover,"}"))
+
+## epicontacts object
+x <- make_epicontacts(linelist = linelist,
+                      contacts = inf_contacts_df,
+                      id = "id",
+                      from = "from",
+                      to = "to",
+                      directed = FALSE)
+
+## plot epicontacts
+plot(x,
+     node_color = "type",
+     edge_color = "cause",
+     edge_label = "inf_interval",
+     label = "room",
+     thin = TRUE)
+
+
+## NOT WORKING
+#node_colors <- setNames(c("red", "blue", "black","darkgreen"), c("PATIENT", "HEALTHCARE WORKER", "INDEX","ROOM"))
 ```
 
 
@@ -410,7 +452,6 @@ contact = NA
 <!-- ################################# GARBAGE ############################## -->
 
 ```{r}
-
 res_status <- test[["global_status"]]
 test_order <- res_status %>% filter(t_inf != -1)
 

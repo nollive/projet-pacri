@@ -178,8 +178,8 @@ Rcpp::DataFrame Update_status_bis(
     Rcpp::IntegerVector status_tim1 = Get_status_t(global_status, t);
 
     Rcpp::CharacterVector ids = admission["id"];
-    Rcpp::IntegerVector info_int = admission["info"];
-    Rcpp::IntegerVector info_room = admission["room"];
+    Rcpp::IntegerVector admission_int = admission["info"];
+    Rcpp::IntegerVector admission_room = admission["room"];
     
     Rcpp::IntegerVector t_inf_tim1 = global_status["t_inf"];
     Rcpp::IntegerVector t_recover_tim1 = global_status["t_recover"];
@@ -202,9 +202,9 @@ Rcpp::DataFrame Update_status_bis(
             t_recover_ti[j] = (t-1) + Incub_period_gamma(); // C++ INDEX BEGINS AT 0 / R BEGINS AT 1
 
             // ROOM WHERE j IS INFECTED //
-            if (info_int[j] == 0){
-                room_j= info_room[j];
-            } else if (info_int[j] == 1){
+            if (admission_int[j] == 0){
+                room_j= admission_room[j];
+            } else if (admission_int[j] == 1){
                 room_j = Get_loc_HCW(ids[j], admission, localization_ti);
             }
              inf_room_ti[j] = room_j;
