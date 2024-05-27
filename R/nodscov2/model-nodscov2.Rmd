@@ -14,6 +14,7 @@ library(Rcpp)
 ```{r}
 wd <- getwd()
 knitr::opts_chunk$set(root.dir = wd)
+args = commandArgs(trailingOnly=TRUE)
 
 cpp_path <-  file.path(wd,"..", "..", "cpp")
 cpp_model_path <- file.path(cpp_path,"nodscov2")
@@ -23,7 +24,6 @@ loc_nodscov2_path <- file.path(wd, "..", "..", "out", "loc-nodscov2")
 
 ## NodsCov2 data (not shared)
 ```{r}
-args = commandArgs(trailingOnly=TRUE)
 #load("Y:/ogaufres/pacri-non-sync/data/data-nodscov2/admission_ctc_nodscov2.RData")
 #load("Y:/ogaufres/pacri-non-sync/data/data-nodscov2/list_ward.RData")
 load(file.path(loc_nodscov2_path,"localization-nodscov2.RData")) ##overwrite admission

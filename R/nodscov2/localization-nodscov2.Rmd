@@ -27,8 +27,10 @@ loc_nodscov2_path <- file.path(wd, "..", "..", "out", "loc-nodscov2")
 
 ## NodsCov2 data (not shared)
 ```{r}
-load("Y:/ogaufres/pacri-non-sync/data/data-nodscov2/admission_ctc_nodscov2.RData")
-load("Y:/ogaufres/pacri-non-sync/data/data-nodscov2/list_ward.RData")
+load(file.path(nodscov2_path, "admission_ctc_nodscov2.RData"))
+load(file.path(nodscov2_path, "list_ward.RData"))
+# load("Y:/ogaufres/pacri-non-sync/data/data-nodscov2/admission_ctc_nodscov2.RData")
+# load("Y:/ogaufres/pacri-non-sync/data/data-nodscov2/list_ward.RData")
 ```
 
 
@@ -91,10 +93,20 @@ global_interaction <- lapply(1:n_subdivisions, function(t){
 
 ## DOUBLE ROOMS
 ```{r}
-## EITHER CHOOSE TO REMOVE THE INTERACTION BETWEEN THE INDUVIDUALS OR PUT A PERMANENT INTERACTION BETWEEN THE INDIVIDUALS
+## 3 CHOICES
+# 1. KEEP THE INTERACTION REGARDLESS OF THE SINGLE/DOUBLE ROOM ASSIGNATION (WE CHOSE THIS ASSUMPTION)
 
-##PERMANENT INTERACTION
-# ## RP reanimation ward has 2 double rooms -> individuals are always in contact (c.f. R/nodscov2/interaction-nodscov2.Rmd)
+
+## 2. CHOOSE TO REMOVE THE INTERACTION BETWEEN THE INDUVIDUALS
+# data_tot <- data_tot %>%
+#   filter(! (from == "001-0038-B-S" & to == "001-0039-B-F")) %>%
+#   filter(! (from == "001-0039-B-F" & to == "001-0038-B-S")) %>%
+#   filter(! (from == "001-0128-Z-K" & to == "001-0127-B-A")) %>%
+#   filter(! (from == "001-0127-B-A" & to == "001-0128-Z-K")) %>%
+  
+
+# 3. CHOOSE TO PUT A PERMANENT INTERACTION BETWEEN THE INDIVIDUALS
+# ## RP reanimation ward has 2 double rooms (c.f. R/nodscov2/interaction-nodscov2.Rmd)
 # for(t in 1:n_subdivisions){
 #   a_df <- data.frame(from = "001-0038-B-S", to = "001-0039-B-F", time = t, from_status = "PA", to_status = "PA")
 #   b_df <- data.frame(from = "001-0127-B-A", to = "001-0128-Z-K", time = t, from_status = "PA", to_status = "PA")
@@ -126,54 +138,21 @@ rooms <-rooms %>% mutate(room = ifelse(id == "001-0128-Z-K", rooms[rooms$id == "
                          id_room = ifelse(id == "001-0128-Z-K", rooms[rooms$id == "001-0127-B-A", "id_room"], id_room))
 
 double_rooms <- list(c("001-0038-B-S", "001-0039-B-F"), c("001-0127-B-A", "001-0128-Z-K"))
-
 ```
 
 
-## INTERACTION localization
-```{r}
-global_interaction <- lapply(global_interaction, function(df) {
-  df <- df %>% mutate(localization = NA)
-  
-  # Join data_tot with rooms based on the common column (id) for 'from'
-  df <- df %>%
-    left_join(rooms, by = c("from" = "id")) %>%  ## .x join
-    left_join(rooms, by = c("to" = "id")) %>% ## .y join
-    mutate(localization = case_when(
-      from %in% c("001-0038-B-S", "001-0039-B-F") | to %in% c("001-0038-B-S", "001-0039-B-F") ~ rooms[rooms$id == "001-0038-B-S", "id_room"],
-      from %in% c("001-0127-B-A", "001-0128-Z-K") | to %in% c("001-0127-B-A", "001-0128-Z-K") ~ rooms[rooms$id == "001-0127-B-A", "id_room"],
-      from_status == "PE" & to_status == "PE" ~ rooms[rooms$id == "PE" , "id_room"],
-      from_status == "PA" & to_status == "PE" ~ id_room.x,
-      from_status == "PE" & to_status == "PA" ~ id_room.y,
-    )) %>%
-    select(-room.x, -id_room.x, -room.y, -id_room.y)
-  
-  ## Remove duplicated interactions (there is sometimes interactions recorded multiple times)
-  df <- unique(df)
-  
-  return(df)
-})
-
-#### WE CAN UPDATE THIS localization MODEL TO USE:
-## THE PREVIOUS INT OF INDIVIDUALS
-## IF THERE IS ONLY 2 individuals interactings --> Corridor
-## IF THERE IS MORE THAN TWO PATIENTS --> Corridor ? (c.f. overlap section )
-## etc etc
-
-
-#data_tot <- do.call(rbind, global_interaction)
-```
 
 
 ## INTERACTION CLUSTERS FOR EACH TIME t
 ```{r}
 clusters <- lapply(global_interaction, function(df) {
-  # non oriented graph based on interaction happening at time t
+  # df to non oriented graph based on interaction happening at time t
   graph <- graph_from_data_frame(df, directed = FALSE)
   # Extract connected component
-  clusters <- clusters(graph)$membership
-  # clusters to list transformation
+  clusters <- components(graph)$membership
+  # clusters to list (unique list of individual)
   clusters_list <- lapply(unique(clusters), function(i) {
+    #for each cluster i, we extract the vertices/nodes of the graph -> individual names in each clusters 
     as.character(V(graph)[clusters == i]$name)
   })
   return(clusters_list)
@@ -186,10 +165,11 @@ clusters <- lapply(global_interaction, function(df) {
 ```{r}
 HCW_ids <- admission$id[admission$status == "PE"]
 data_tot <- do.call(rbind,global_interaction)
+
 ## FOR PE-PA INTERACTIONS
 a = data_tot %>%
   filter(!(from_status == "PA" & to_status == "PA") & !(from_status == "PE" & to_status == "PE")) %>%
-  mutate(id = ifelse(from_status == "PE", from, to)) %>% 
+  mutate(id = ifelse(from_status == "PE", from, to)) %>% ## we want HCW ids
   group_by(id) %>%
   mutate(first_time = min(time), last_time = max(time)) %>%
   ungroup() %>%
@@ -197,7 +177,8 @@ a = data_tot %>%
   filter(id %in% HCW_ids) %>%
   select(id, first_time, last_time)
 
-## FOR PE-PE INTERACTIONS | FROM
+
+## FOR PE-PE INTERACTIONS | FROM ids
 b = data_tot %>%
   filter(from_status == "PE" & to_status == "PE") %>%
   mutate(id = from) %>% 
@@ -208,7 +189,8 @@ b = data_tot %>%
   filter(id %in% HCW_ids) %>%
   select(id, first_time, last_time)
 
-## FOR PE-PE INTERACTIONS | TO
+
+## FOR PE-PE INTERACTIONS | TO ids
 c = data_tot %>%
   filter(from_status == "PE" & to_status == "PE") %>%
   mutate(id = to) %>% 
@@ -219,7 +201,7 @@ c = data_tot %>%
   filter(id %in% HCW_ids) %>%
   select(id, first_time, last_time)
 
-
+## BIND DFs
 inferred_admission <- bind_rows(a, b, c) %>%
   group_by(id) %>%
   summarise(
@@ -236,7 +218,7 @@ rm(c)
 rm(data_tot)
 
 
-## THERE IS HCW THAT ARE NOT PRESENT DURING THE STUDY --> WE CAN EXCLUDE THEM FROM THE localization INFERENCE MODEL
+## THERE IS HCWs THAT ARE NOT PRESENT DURING THE STUDY --> WE CAN EXCLUDE THEM FROM THE localization INFERENCE MODEL
 HCW_interacting_ids <- inferred_admission %>% pull(id)
 length(HCW_interacting_ids)
 HCW_not_here <- setdiff(HCW_ids, HCW_interacting_ids)
@@ -261,7 +243,7 @@ global_localization <- list()
 
 
 global_localization <- lapply(1:n_subdivisions, function(t) {
-  localization_t <- data.frame(id = HCW_interacting_ids, localization = NA, time = t)
+  localization_t <- data.frame(id = HCW_interacting_ids, localization = NA, time = t) ##only hcw that are actually here 
 
   # Interactions at time t
   interactions_t <- global_interaction[[t]]
@@ -290,7 +272,7 @@ global_localization <- lapply(1:n_subdivisions, function(t) {
     } else {
       cluster_localization <- rooms[rooms$id == "PE", "id_room"] ## ONLY HCW INTERACTING
     }
-    ## Assign the localization for individuals inside the cluster (<<- to edit localization_t defined outside clusters_t's lapply)
+    ## Assign the localization for individuals inside the cluster (<<- to edit localization_t defined outside clusters_t's lapply scope)
     localization_t$localization <<- ifelse(localization_t$id %in% cluster, cluster_localization, localization_t$localization)
 
     ## MULTIPLE PATIENTS IN THE CLUSTER --> TEMPORARY, FIXED LATER
@@ -445,14 +427,118 @@ print(tb_no_int - ta_no_int)
 
 
 ```
+## MUTATE "NOT HERE" TO -1 (for Rcpp) 
+```{r}
+global_localization <- lapply( 1:n_subdivisions, function(t){
+  loc_t <- global_localization[[t]]
+  loc_t <- loc_t %>% mutate(localization = ifelse(localization == "NOT HERE", -1, localization))
+  loc_t$localization <- as.integer(loc_t$localization)
+  return(loc_t)
+})
+```
+
+
+
+## REBUILD GLOBAL_INTERACTION WITH CORRECT LOCALIZATION
+```{r}
+test_global_int <- global_interaction
+
+# FOR EACH t
+for (t in 1:length(test_global_int)) {
+  interactions <- test_global_int[[t]]
+  cluster <- clusters[[t]]
+  
+  # FOR EACH INT 
+  for (j in 1:nrow(interactions)) {
+    interaction <- interactions[j, ]
+    id_from <- interaction$from ##from and to are in the same cluster
+    # CLUSTER ASSOCIATED WITH THIS INTERACTION
+    cluster_id <- NA  
+    for (k in 1:length(cluster)) {
+      if (id_from %in% cluster[[k]]) {
+        cluster_id <- k
+        break
+      }
+    }
+    localization <- "NOT ASSIGNED"
+    # ID ROOM
+    if (interaction$from_status == "PA" & interaction$to_status == "PA"){ ## IF PA-PA
+      localization1 <- rooms[rooms$id == interaction$from, "id_room"] ## DOUBLE ROOM, FROM/TO SAME THING
+      localization2 <- rooms[rooms$id == interaction$to, "id_room"]
+      localization <- ifelse(localization1 == localization2, localization1, "PROBLEM PA-PA NOT SAME ROOM")
+    } else{ # IF PE-PE OR PA-PE OR PE-PA -> CAUTION, GLOBAL_LOCALIZATION ONLY TRACK HCW (PE) LOCALIZATION, WE CANNOT ACCESS TO CLUSTER'S LOCALIZATION USING A PATIENT (PA) ID
+      patient_id <- ifelse(interaction$from_status == "PA", interaction$to, interaction$from)
+      patient_room <- rooms[rooms$id == patient_id, "id_room"]
+      localization <- global_localization[[t]] %>% filter(id == patient_id) %>% pull(localization)
+    }
+
+    # EDIT GLOBAL_INTERACTION
+    test_global_int[[t]]$cluster_id[j] <- cluster_id
+    test_global_int[[t]]$localization[j] <- localization
+  }
+}
+
+global_interaction <- test_global_int
+```
+
+
 ## TEMPORARY
 #SAVE TO .RData FILES
 ```{r}
-save(clusters, global_localization, inferred_admission, rooms, global_interaction, admission, HCW_interacting_ids, n_subdivisions, begin_date, end_date, file = file.path(loc_nodscov2_path, "localization-nodscov2.RData"))
+save(clusters,
+     global_localization,
+     inferred_admission,
+     rooms,
+     global_interaction,
+     admission,
+     HCW_interacting_ids,
+     n_subdivisions,
+     begin_date,
+     end_date,
+     file = file.path(loc_nodscov2_path, "localization-nodscov2.RData"))
 ```
 
 
 <!-- ################################# GARBAGE ############################## -->
+
+
+
+## INTERACTION localization
+```{r}
+## "NAIVE" INDIVIDUAL LOCATION
+test_global_interaction <- lapply(global_interaction, function(df) {
+  df <- df %>% mutate(localization = NA)
+  
+  # Join df with rooms based on df$from/to and rooms$id
+  df <- df %>%
+    left_join(rooms, by = c("from" = "id")) %>%  ## .x join
+    left_join(rooms, by = c("to" = "id")) %>% ## .y join
+    mutate(localization = case_when(
+      from %in% c("001-0038-B-S", "001-0039-B-F") | to %in% c("001-0038-B-S", "001-0039-B-F") ~ rooms[rooms$id == "001-0038-B-S", "id_room"],
+      from %in% c("001-0127-B-A", "001-0128-Z-K") | to %in% c("001-0127-B-A", "001-0128-Z-K") ~ rooms[rooms$id == "001-0127-B-A", "id_room"],
+      from_status == "PE" & to_status == "PE" ~ rooms[rooms$id == "PE" , "id_room"],
+      from_status == "PA" & to_status == "PE" ~ id_room.x,
+      from_status == "PE" & to_status == "PA" ~ id_room.y,
+    )) %>%
+    select(-room.x, -id_room.x, -room.y, -id_room.y)
+  
+  ## Remove duplicated interactions (there is sometimes interactions recorded multiple times)
+  df <- unique(df)
+  
+  return(df)
+})
+
+#### WE CAN UPDATE THIS localization MODEL TO USE:
+## THE PREVIOUS INT OF INDIVIDUALS
+## IF THERE IS ONLY 2 individuals interactings --> Corridor
+## IF THERE IS MORE THAN TWO PATIENTS --> Corridor ? (c.f. overlap section )
+## etc etc
+
+
+#data_tot <- do.call(rbind, global_interaction)
+```
+
+
 
 ## OVERLAP
 ```{r}

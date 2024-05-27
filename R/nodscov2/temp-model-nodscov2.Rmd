@@ -85,7 +85,7 @@ n_individuals
 
 ## INTERACTIONS
 ```{r}
-global_interaction <- data_list
+head(global_interaction)
 ```
 
 ## ROOMS
@@ -344,50 +344,6 @@ ggplot(FOI_over_time, aes(x = time)) +
 ```
 
 
-## REBUILD GLOBAL_INTERACTION WITH CORRECT LOCALIZATION
-```{r}
-test_global_int <- global_interaction
-
-# FOR EACH t
-for (t in 1:length(test_global_int)) {
-  interactions <- test_global_int[[t]]
-  cluster <- clusters[[t]]
-  
-  # FOR EACH INT 
-  for (j in 1:nrow(interactions)) {
-    interaction <- interactions[j, ]
-    id_from <- interaction$from ##from and to are in the same cluster
-    # CLUSTER ASSOCIATED WITH THIS INTERACTION
-    cluster_id <- NA  
-    for (k in 1:length(cluster)) {
-      if (id_from %in% cluster[[k]]) {
-        cluster_id <- k
-        break
-      }
-    }
-    localization <- "NOT ASSIGNED"
-    # ID ROOM
-    if (interaction$from_status == "PA" & interaction$to_status == "PA"){ ## IF PA-PA
-      localization1 <- rooms[rooms$id == interaction$from, "id_room"] ## DOUBLE ROOM, FROM/TO SAME THING
-      localization2 <- rooms[rooms$id == interaction$to, "id_room"]
-      localization <- ifelse(localization1 == localization2, localization1, "PROBLEM PA-PA NOT SAME ROOM")
-    } else{ # IF PE-PE OR PA-PE OR PE-PA -> CAUTION, GLOBAL_LOCALIZATION ONLY TRACK HCW (PE) LOCALIZATION, WE CANNOT ACCESS TO CLUSTER'S LOCALIZATION USING A PATIENT (PA) ID
-      patient_id <- ifelse(interaction$from_status == "PA", interaction$to, interaction$from)
-      patient_room <- rooms[rooms$id == patient_id, "id_room"]
-      localization <- global_localization[[t]] %>% filter(id == patient_id) %>% pull(localization)
-    }
-
-    # EDIT GLOBAL_INTERACTION
-    test_global_int[[t]]$cluster_id[j] <- cluster_id
-    test_global_int[[t]]$localization[j] <- localization
-  }
-}
-## OK
-loc_reel <- global_localization[[100]] %>% filter(localization != -1) %>% filter(id %in% test_global_int[[100]]$from | id %in% test_global_int[[100]]$to )
-int_test <- test_global_int[[100]]
-
-
-```
 
 
 ## INFECTION CHAIN
