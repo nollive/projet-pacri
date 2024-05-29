@@ -165,6 +165,83 @@ clusters <- lapply(global_interaction, function(df) {
 
 
 
+
+
+## SHIFTS INFERENCE
+```{r}
+data_d1 <- data %>% filter(day(date_posix_first) == day(begin_date))
+data_d2 <- data %>% filter(day(date_posix_first) == day(end_date))
+#dim(data_d2)[1] + dim(data_d1)[1] == dim(data)[1]
+
+shift <- admission %>%
+  select(id, status, cat) %>%
+  filter(status == "PE") %>%
+  mutate(min_d1 = as.POSIXct(NA, origin="1970-01-01"),
+         max_d1 = as.POSIXct(NA, origin="1970-01-01"),
+         min_d2 = as.POSIXct(NA, origin="1970-01-01"),
+         max_d2 = as.POSIXct(NA, origin="1970-01-01"))
+
+for (ind in shift$id){
+  min_d1 = min(data_d1 %>% filter(from == ind | to == ind) %>% pull(date_posix_first))
+  max_d1 = max(data_d1 %>% filter(from == ind | to == ind) %>% mutate(date_tot = date_posix_first + length)  %>% pull(date_tot))
+  min_d2 = min(data_d2 %>% filter(from == ind | to == ind) %>% pull(date_posix_first))
+  max_d2 = max(data_d2 %>% filter(from == ind | to == ind) %>% mutate(date_tot = date_posix_first + length)  %>% pull(date_tot))
+  shift[shift$id == ind, "min_d1"] <- as.POSIXct(min_d1)
+  shift[shift$id == ind, "max_d1"] <- as.POSIXct(max_d1) 
+  shift[shift$id == ind, "min_d2"] <- as.POSIXct(min_d2) 
+  shift[shift$id == ind, "max_d2"] <- as.POSIXct(max_d2) 
+}
+```
+
+
+```{r}
+# Pivot -> get all int for each individual
+df_long <- data %>%
+  pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>%
+  arrange(individual, date_posix_first)
+
+# Time between 2 interactions for each individual (lag get the previous )
+df_long <- df_long %>%
+  group_by(individual) %>%
+  mutate(time_diff = difftime(date_posix_first, lag(date_posix_first), units = "mins"))
+
+
+time_threshold <- 60*3
+
+df_long <- df_long %>%
+  mutate(new_shift = ifelse(is.na(time_diff) | time_diff > time_threshold, 1, 0)) %>%
+  group_by(individual) %>%
+  mutate(shift_id = cumsum(new_shift))
+
+shifts <- df_long %>%
+  group_by(individual, shift_id) %>%
+  summarise(
+    start_time = min(date_posix_first),
+    end_time = max(date_posix_first),
+    shift_length = as.numeric(difftime(max(date_posix_first), min(date_posix_first), units = "hours")),
+    .groups = 'drop'
+  ) %>%
+  filter(shift_length <= 15)
+
+
+# shifts <- shifts %>%
+#   group_by(individual) %>%
+#   mutate(shift_number = row_number()) %>%
+#   filter(shift_number <= 2) %>%
+#   select(-shift_number)
+
+shifts <- shifts %>% left_join(admission %>% select(id,status), by = c("individual" = "id")) %>% filter(status == "PE")
+
+print(shifts)
+```
+
+
+
+
+
+
+
+
 ## localization INFERENCE - inferred ADMISSIONS & HCW NOT PRESENT DURING THE WHOLE STUDY - TEMPORARY (assign first_time and last_time for individual --> TO KNOW WHEN THEY LEAVE)
 ```{r}
 HCW_ids <- admission$id[admission$status == "PE"]
