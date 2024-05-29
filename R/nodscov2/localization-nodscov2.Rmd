@@ -484,7 +484,7 @@ global_interaction <- test_global_int
 ```{r}
 save(clusters,
      global_localization,
-     inferred_admission,
+     shifts,
      rooms,
      global_interaction,
      admission,
@@ -519,7 +519,7 @@ library(viridis)
 
 
 test_loc %>%
-  ggplot( aes(x=cat, y=sum_room, fill=cat)) +
+  ggplot( aes(x=cat, y=sum_room/3600, fill=cat)) +
     geom_boxplot() +
     scale_fill_viridis(discrete = TRUE, alpha=0.6) +
     geom_jitter(color="black", size=0.4, alpha=0.9) +
@@ -536,7 +536,7 @@ test_loc %>%
 
     
 test_loc %>%
-  ggplot( aes(x=cat, y=sum_room, fill=cat)) +
+  ggplot( aes(x=cat, y=sum_room/3600, fill=cat)) +
     geom_violin() +
     geom_boxplot(width=.1) +
     scale_fill_viridis(discrete = TRUE, alpha=0.6) +
@@ -554,7 +554,7 @@ test_loc %>%
     
 
 test_loc %>% filter(room == "Restroom") %>%
-  ggplot( aes(x=cat, y=sum_room, fill=cat)) +
+  ggplot( aes(x=cat, y=sum_room/3600, fill=cat)) +
     geom_violin() +
     geom_boxplot(width=.1) +
     scale_fill_viridis(discrete = TRUE, alpha=0.6) +
