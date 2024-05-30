@@ -730,25 +730,25 @@ u = do.call(rbind, cluster_info_list)
 #     # future_int <- data_tot %>% filter(from == individual | to == individual) %>% filter(time == t+1)
 #     # overlap <- current_int %>% distinct(localization)
 # write.csv2(data = overlap, file = file.path(nodscov2_path, "overlap-RP-test.csv"), row.names = F, header = T)
-
-overlap <- read.csv2(file = file.path(nodscov2_path, "overlap-RP-test.csv"))
-## Only checking for multiple CHAMBER assignation
-overlap_bis <- overlap %>%
-  filter(!(from_status == "PE" & to_status == "PE")) %>% 
-  filter(!(from_status == "PA" & to_status == "PA")) %>%
-  mutate(id = if_else(from_status == "PE", from, to)) ## ID OF THE HCW
-
-
-result <- overlap_bis %>%
-  group_by(id, time) %>%
-  mutate(unique_loc = n_distinct(localization)) %>% # Nb of distinct localization assigned to each HCWs 
-  filter(unique_loc > 1) %>%
-  select(-unique_loc)
-
-View(result)
-
-## Distinct nb of room each HCW is assigned to during the 
-result %>% group_by(id) %>% distinct(localization, .keep_all = T) %>% summarise( n = n())
+# 
+# overlap <- read.csv2(file = file.path(nodscov2_path, "overlap-RP-test.csv"))
+# ## Only checking for multiple CHAMBER assignation
+# overlap_bis <- overlap %>%
+#   filter(!(from_status == "PE" & to_status == "PE")) %>% 
+#   filter(!(from_status == "PA" & to_status == "PA")) %>%
+#   mutate(id = if_else(from_status == "PE", from, to)) ## ID OF THE HCW
+# 
+# 
+# result <- overlap_bis %>%
+#   group_by(id, time) %>%
+#   mutate(unique_loc = n_distinct(localization)) %>% # Nb of distinct localization assigned to each HCWs 
+#   filter(unique_loc > 1) %>%
+#   select(-unique_loc)
+# 
+# View(result)
+# 
+# ## Distinct nb of room each HCW is assigned to during the 
+# result %>% group_by(id) %>% distinct(localization, .keep_all = T) %>% summarise( n = n())
 ```
 
 
