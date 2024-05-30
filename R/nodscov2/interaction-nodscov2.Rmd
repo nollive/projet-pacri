@@ -1,19 +1,23 @@
 ---
-title: "interaction-nodscov2"
+title: "Interaction-nodscov2"
 author: "Olivier GAUFRÈS"
 date: "2024-05-03"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
+## Libraries
+```{r setup, include=TRUE}
 knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
-#library(tidyverse)
 library(ggplot2)
 library(lubridate)
+library(tidyverse)
+library(hrbrthemes)
+library(viridis)
 ```
 
-```{r}
+## Working directory & paths
+```{r wd and paths}
 wd <- getwd()
 knitr::opts_chunk$set(root.dir = wd)
 
@@ -25,12 +29,11 @@ expanded_path <- file.path(data_path,"data-expanded")
 nodscov2_path <- file.path(data_path, "data-nodscov2") 
 ```
 
-### WIP 
 
 ## NodsCov2 data (not shared)
 ```{r}
-load("Y:/ogaufres/pacri-non-sync/data/data-nodscov2/admission_ctc_nodscov2.RData")
-load("Y:/ogaufres/pacri-non-sync/data/data-nodscov2/list_ward.RData")
+# load("Y:/ogaufres/pacri-non-sync/data/data-nodscov2/admission_ctc_nodscov2.RData")
+# load("Y:/ogaufres/pacri-non-sync/data/data-nodscov2/list_ward.RData")
 
 load(file.path(nodscov2_path, "admission_ctc_nodscov2.RData"))
 load(file.path(nodscov2_path, "list_ward.RData"))
@@ -72,21 +75,13 @@ table(admission$hospital, admission$ward)
 
 ## "FILTRATION"
 ```{r}
-admission %>% filter(ward == "Reanimation")
+head(admission %>% filter(ward == "Reanimation"))
 
 ## Ind in each reanimation ward
-admission %>% filter(ward == "Reanimation") %>% group_by(hospital) %>% summarise( n = n(), .groups = "drop")
+head(admission %>% filter(ward == "Reanimation") %>% group_by(hospital) %>% summarise( n = n(), .groups = "drop"))
 
 ## Cat in each reanimation ward
-admission %>% filter(ward == "Reanimation") %>% group_by(hospital, cat) %>% summarise( n = n(), .groups = "drop")
-
-# admission %>% filter(ward == "Reanimation" | ward == "ReaChirurgie")
-# 
-# ## Ind in each reanimation ward
-# admission %>% filter(ward == "Reanimation"| ward == "ReaChirurgie") %>% group_by(hospital) %>% summarise( n = n(), .groups = "drop")
-# 
-# ## Cat in each reanimation ward
-# admission %>% filter(ward == "Reanimation"| ward == "ReaChirurgie") %>% group_by(hospital, cat) %>% summarise( n = n(), .groups = "drop")
+head(admission %>% filter(ward == "Reanimation") %>% group_by(hospital, cat) %>% summarise( n = n(), .groups = "drop"))
 ```
 
 
@@ -210,6 +205,8 @@ data_rea %>%
   labs(x = "Hour of the day", y = "Number of interactions")
 ```
 
+
+## Cumulative time spent with patients by category of HCW
 ```{r}
 length_cat <- list_rea[[poincare]] %>%
   filter((from_status == "PA" & to_status == "PE") | (from_status == "PE" & to_status == "PA")) %>%
@@ -226,53 +223,7 @@ sum_length_cat <- length_cat %>%
     .groups = 'drop'
   )
 
-# Adjusted cumulative time interacting with patients by category of HCW
-ggplot(sum_length_cat, aes(x = id_pe, y = adj_sum_cat)) +
-  geom_bar(stat = "identity") +
-  theme_bw() +
-  #theme(axis.text.x = element_text(angle = 35, hjust = 1)) +
-  theme(axis.text.x = element_blank()) +
-  facet_grid(cols = vars(cat)) +
-  labs(
-    title = "Distribution of adjusted time spent interacting with patients by category of HCW",
-    x = "Category",
-    y = "Adjusted cumulative time interacting"
-  )
-
-# Number of distinct interactions with patients by category of HCW
-ggplot(sum_length_cat, aes(x = id_pe, y = n_cat)) +
-  geom_bar(stat = "identity") +
-  theme_bw() +
-  #theme(axis.text.x = element_text(angle = 35, hjust = 1)) +
-  theme(axis.text.x = element_blank()) +
-  facet_grid(cols = vars(cat)) +
-  labs(
-    title = "Distribution of distinct interactions with patients by category of HCW",
-    x = "Category",
-    y = "Number of interactions"
-  )
-
-# Cumulative time spent interacting with patients by category of HCW
-ggplot(sum_length_cat, aes(x = id_pe, y = sum_cat)) +
-  geom_bar(stat = "identity") +
-  theme_bw() +
-  #theme(axis.text.x = element_text(angle = 35, hjust = 1)) +
-  theme(axis.text.x = element_blank()) +
-  facet_grid(cols = vars(cat)) +
-  labs(
-    title = "Distribution of time spent interacting with patients by category of HCW",
-    x = "HCW ID",
-    y = "Cumulative time interacting"
-  )
-```
-
-
-```{r}
-## Violin and jitter
-library(tidyverse)
-library(hrbrthemes)
-library(viridis)
-# Plot
+# Boxplot & jittered points
 sum_length_cat %>%
   ggplot( aes(x=cat, y=sum_cat, fill=cat)) +
     geom_boxplot() +
@@ -288,7 +239,7 @@ sum_length_cat %>%
     xlab("") +
     ylab("Cumulative time interacting (s)")
 
-
+# Violin plot
 sum_length_cat %>%
   ggplot( aes(x=cat, y=sum_cat, fill=cat)) +
     geom_violin() +
@@ -320,7 +271,6 @@ k_RP %>% filter(from_status == "PA" & to_status == "PA") %>% group_by(from,to) %
 table(k_EH$from_status, k_EH$to_status)
 k_EH %>% filter(from_status == "PA" & to_status == "PA")
 k_EH %>% filter(from_status == "PA" & to_status == "PA") %>% group_by(from) %>% summarise(len = sum(length))
-## we can delete PA-PA int in EH ()
 ```
 
 ## Raymond Poincaré double rooms hypothesis
@@ -405,39 +355,8 @@ for (individual in pe_b) {
 rm(pe_b)
 rm(interactions)
 rm(temp_b)
-rm(interactions)
 
 summary(overlap_b)
 ```
-
-
-
-## EXPORT DATA TO CSV
-```{r}
-# data <- list_rea[[poincare]]
-# begin_date <- as.POSIXct(min(data$date_posix_first))
-# end_date <- as.POSIXct(max(data$date_posix_first + data$length))
-# time_spent <- end_date - begin_date
-# 
-# n_subdivisions <- as.integer(time_spent) * 24 * 60 * 2 ## Time spent * hours * minutes * 2 (number of time subdivisions)
-# interactions_tot_R <- data.frame(from = NA, to = NA, time = NA, from_status = NA, to_status = NA )
-# 
-# lin_a <- Sys.time()
-# for(t in 1:n_subdivisions){
-#   interactions_t <- data %>%
-#     filter(date_posix_first <= begin_date + (t)*30 & date_posix_first + length >= begin_date + (t+1)*30) %>%
-#     mutate(time = t) %>%
-#     select(from, to, time, from_status, to_status)
-# 
-#   if (dim(interactions_t)[1]!= 0){
-#   interactions_tot_R <- interactions_tot_R %>% bind_rows(interactions_t)
-#   }
-# }
-# lin_b <- Sys.time()
-# print(lin_b-lin_a)
-# write.csv2(interactions_tot_R, file = file.path(wd,"..", "..", "data", "data-nodscov2", "int_tot_RP_test.csv"), row.names = F)
-
-```
-
 <!-- ################################# GARBAGE ############################## -->
 

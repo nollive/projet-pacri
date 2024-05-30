@@ -23,6 +23,7 @@ sim_nodscov2_path <- file.path(wd, "..", "..", "out", "sim-nodscov2")
 ```{r}
 id_sim <- "01"
 ```
+
 ## TEST
 ```{r}
 id_sim <- "test-endless-day"
@@ -30,11 +31,27 @@ load(file.path(sim_nodscov2_path, paste0(id_sim, "-", "simulation-nodscov2.RData
 data_sim <- data_sim_test
 rm(data_sim_test)
 
-global_interaction <- rep(truncated_interaction, n_days)
-global_localization <- rep(truncated_localization, n_days)
+# global_interaction <- rep(truncated_interaction, n_days)
+# global_localization <- rep(truncated_localization, n_days)
 n_subdivisions <- new_n_subdivisions
 begin_date <- new_begin_date
 end_date <- new_end_date + days(n_days)
+```
+
+## REMOVE INDIVUDUALS NOT INTERACTING DURING THE SIMULATION
+```{r}
+id_interacting <- do.call(rbind,truncated_interaction) %>%
+  pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>%
+  distinct(individual) %>%
+  pull()
+id_total <- admission %>% distinct(id) %>% pull()
+id_not_interacting <- setdiff(id_total, id_interacting)
+```
+
+```{r}
+status_sim <- data_sim[["global_status"]] %>% filter(id %in% id_interacting)
+lambda_sim <- lapply(data_sim[["global_lambda"]], function(df)  df %>% filter(id %in% id_interacting))
+#environment_sim <- data_sim[["global_environment"]] ## might filter it later to remove the rooms of patient not interacting in the truncated data
 ```
 
 
@@ -42,14 +59,14 @@ end_date <- new_end_date + days(n_days)
 ## Vizualisation
 ```{r}
 ## Number of infected over time
-n_individual <- dim(data_sim[["global_status"]])[1]
+n_individual <- dim(status_sim)[1]
 counts <- lapply(1:n_subdivisions, function(t) {
   df <- data.frame(status = c("Susceptible", "Exposed ", "Infectious", "Recovered"), count = NA, proportion = NA, time = t)
   
-  df$count[1] <- sum(data_sim[["global_status"]]$t_inf == -1 | data_sim[["global_status"]]$t_inf > t)
-  df$count[2] <- sum(data_sim[["global_status"]]$t_inf <= t & data_sim[["global_status"]]$t_incub > t)
-  df$count[3] <- sum(data_sim[["global_status"]]$t_incub <= t & data_sim[["global_status"]]$t_recover > t)
-  df$count[4] <- sum(data_sim[["global_status"]]$t_recover <= t & data_sim[["global_status"]]$t_inf != -1)
+  df$count[1] <- sum(status_sim$t_inf == -1 | status_sim$t_inf > t)
+  df$count[2] <- sum(status_sim$t_inf <= t & status_sim$t_incub > t)
+  df$count[3] <- sum(status_sim$t_incub <= t & status_sim$t_recover > t)
+  df$count[4] <- sum(status_sim$t_recover <= t & status_sim$t_inf != -1)
   
   df$proportion[1] <- df$count[1] * 100 / n_individual
   df$proportion[2] <- df$count[2] * 100 / n_individual
@@ -62,6 +79,15 @@ counts <- lapply(1:n_subdivisions, function(t) {
 counts_df <- do.call(rbind, counts)
 
 ggplot(counts_df, aes(x = time * 30 + begin_date, y = count, color = factor(status))) +
+  geom_line() +
+  labs(title = "SEIR",
+       x = "Time",
+       y = "Number of individuals",
+       color = "Status") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45, hjust=1))
+
+ggplot(counts_df, aes(x = time * 30 + begin_date, y = proportion, color = factor(status))) +
   geom_line() +
   labs(title = "SEIR",
        x = "Time",
@@ -95,12 +121,12 @@ ggplot(viral_load_over_time, aes(x = time, y = viral_load, color = factor(room))
 hcw_id <- admission %>% filter(status == "PE") %>% pull(id)
 
 
-FOI_over_time <- do.call(rbind, lapply(1:(length(data_sim[["global_lambda"]])%/% 100), function(t) {
+FOI_over_time <- do.call(rbind, lapply(1:(length(lambda_sim)%/% 100), function(t) {
   data.frame(time = begin_date + 30 * t*100,
-             id = data_sim[["global_lambda"]][[t*100]]$id,
-             lambda_e = data_sim[["global_lambda"]][[t*100]]$lambda_e,
-             lambda_c = data_sim[["global_lambda"]][[t*100]]$lambda_c,
-             status = ifelse(data_sim[["global_lambda"]][[t*100]]$id %in% hcw_id, "PE", "PA"))
+             id = lambda_sim[[t*100]]$id,
+             lambda_e = lambda_sim[[t*100]]$lambda_e,
+             lambda_c = lambda_sim[[t*100]]$lambda_c,
+             status = ifelse(lambda_sim[[t*100]]$id %in% hcw_id, "PE", "PA"))
 }))
 
 ggplot(FOI_over_time, aes(x = time)) +
@@ -130,15 +156,22 @@ ggplot(FOI_over_time, aes(x = time)) +
   theme(axis.text.x=element_text(angle=45, hjust=1))
 
 ```
+## Individuals that stay susceptible
+```{r}
+list_S <- status_sim %>% filter(t_inf == -1) %>% select(id) %>% left_join(admission %>% select(id, cat, status), by= join_by(id))
+```
+
+
+
 
 
 
 ## INFECTION CHAIN
 ```{r}
 library(epicontacts)
-id_index <- data_sim[["global_status"]] %>% filter(inf_by == "INDEX") %>% pull(id)
+id_index <- status_sim %>% filter(inf_by == "INDEX") %>% pull(id)
 ## linelist object
-linelist <- left_join(admission_sim, data_sim[["global_status"]], by = join_by(id))
+linelist <- left_join(admission_sim, status_sim, by = join_by(id))
 linelist <- linelist %>%
   mutate(type = ifelse(info == 0, "PATIENT", "HEALTHCARE WORKER")) %>%
   mutate(type = ifelse(id == id_index, "INDEX", type)) 
@@ -151,14 +184,14 @@ linelist <- bind_rows(linelist,env_linelist)
 
 
 ## contacts object
-environmental_contacts <- data_sim[["global_status"]] %>%
+environmental_contacts <- status_sim %>%
   filter(grepl("ENVIRONMENT", inf_by)) %>%
   mutate(from = inf_by, to = id, time = t_inf) %>%
   mutate(cause = "ENVIRONMENT") %>% 
   select(from, to, t_inf, t_incub, t_recover, inf_by, cause)
 
 
-close_contacts <- data_sim[["global_status"]] %>%
+close_contacts <- status_sim %>%
   filter(grepl("CONTACT", inf_by)) %>%
   mutate(from = gsub("CONTACT-", "", inf_by), to = id, time = t_inf) %>%
   mutate(cause = "CONTACT") %>% 
@@ -182,12 +215,12 @@ vis_epicontacts(x,
                 edge_color = "cause",
                 col_pal =  cases_pal,
                 # edge_col_pal = spectral,
-                #edge_label = "inf_interval",
+                # edge_label = "inf_interval",
                 label = "room",
                 node_shape = "type",
-                shape = c(INDEX = "circle", `HEALTHCARE WORKER` = "circle", PATIENT = "circle", ROOM= "bed"),
+                shape = c(`HEALTHCARE WORKER` = "circle", `PATIENT` = "circle", `ROOM` = "bed", `INDEX` = "circle"),
                 thin = TRUE,
-                selector = TRUE,
+                selector = TRUE
                 )
 
 ### NOT WORKING

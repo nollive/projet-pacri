@@ -572,7 +572,7 @@ test_loc %>% filter(room == "Restroom") %>%
 
 ## TEMPORARY
 ```{r}
-ind_restroom <- test_loc %>% filter(sum_room > 100000) %>% pull(id)
+ind_restroom <- test_loc %>% filter(sum_room > 15*3600) %>% pull(id)
 
 summarise_int_restroom <- data %>%
   filter(from %in% ind_restroom | to %in% ind_restroom ) %>%

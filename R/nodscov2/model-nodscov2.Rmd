@@ -105,9 +105,9 @@ sourceCpp(file.path(cpp_model_path,"model-nodscov2.cpp"))
 ## PARAMETERS
 ```{r}
 beta <- 4
-epsilon <- 2
-mu <- 5
-nu <- 4
+epsilon <- 1
+mu <- 1
+nu <- 1
 dt <- 30
 tau <- 60 * 60 *24
 deltat <- dt/tau
@@ -188,7 +188,10 @@ truncated_localization <- global_localization[(u <- seq_along(global_localizatio
 truncated_lambda <- global_lambda[(u <- seq_along(global_lambda)) %in% t_begin:(t_end)]
 truncated_environment <- global_environment[(u <- seq_along(global_environment)) %in% t_begin:(t_end)]
 truncated_status <- status
+```
 
+## ENDLESS DAY OBJECTS
+```{r}
 n_days <- 28
 test_interaction <- rep(truncated_interaction, n_days)
 test_localization <- rep(truncated_localization, n_days)
@@ -198,6 +201,8 @@ test_status <- truncated_status
 
 new_n_subdivisions <- (t_end-t_begin +1)*n_days
 ```
+
+
 
 ```{r}
 ta <- Sys.time()
