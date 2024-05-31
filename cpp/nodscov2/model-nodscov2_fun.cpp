@@ -448,7 +448,12 @@ Rcpp::NumericVector Lambda_e (
                     break;
                 }
             }
-        lambda_e_ti[j] = epsilon * deltat * environment[index_room];
+        // VIRAL LOAD THRESOLD
+        if (environment[index_room] > env_thresold){
+            lambda_e_ti[j] = epsilon * deltat * environment[index_room];
+        } else{
+            lambda_e_ti[j] = 0;
+        }
     }
     
     // CASE 2. IF INDIVIDUAL j IS A HCW --> ENVIRONMENT ACCORDING TO ITS LOCALIZATION
