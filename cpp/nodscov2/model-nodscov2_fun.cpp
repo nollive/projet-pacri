@@ -23,7 +23,6 @@ double sd_inf_g = (2.12 * 24*60*2)*z;
 double shape_inf_g = pow(m_inf_g,2) / pow(sd_inf_g, 2);
 double scale_inf_g = pow(sd_inf_g,2) / m_inf_g;
 
-double env_thresold = 1000;
 
 // R UNIQUE(X) FUNCTION
 Rcpp::Environment base("package:base");
@@ -422,6 +421,7 @@ Rcpp::NumericVector Lambda_e (
     Rcpp::DataFrame environment_ti,
     Rcpp::DataFrame admission, 
     const double epsilon,
+    const double env_thresold,
     const double deltat
 ) {
     Rcpp::CharacterVector ids_lambda = lambda_tim1["id"];

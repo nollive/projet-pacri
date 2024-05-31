@@ -111,6 +111,7 @@ nu <- 1
 dt <- 30
 tau <- 60 * 60 *24
 deltat <- dt/tau
+env_thresold <- 0
 ```
 
 ## INDEX
@@ -142,6 +143,7 @@ data_sim <- simulation(global_interaction = global_interaction,
            epsilon = epsilon,
            nu = nu,
            mu = mu,
+           env_thresold,
            dt = dt
            )
 ```
@@ -157,6 +159,7 @@ save(global_interaction,
      beta,
      nu,
      mu,
+     env_thresold,
      dt,
      n_subdivisions,
      begin_date,
@@ -216,6 +219,7 @@ data_sim_test <- simulation(global_interaction = test_interaction,
            epsilon = epsilon,
            nu = nu,
            mu = mu,
+           env_thresold,
            dt = dt
            )
 tb <- Sys.time()
@@ -235,6 +239,7 @@ save(truncated_interaction,
      beta,
      nu,
      mu,
+     env_thresold,
      dt,
      new_n_subdivisions,
      n_days,

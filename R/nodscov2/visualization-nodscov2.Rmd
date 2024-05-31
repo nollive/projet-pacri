@@ -148,7 +148,7 @@ ggplot(FOI_over_time, aes(x = time)) +
 FOI_over_time <- FOI_over_time %>% mutate(p_inf = 1 - exp(-lambda_e - lambda_c))
 
 ggplot(FOI_over_time, aes(x = time)) +
-  geom_line(aes(y = lambda_e, colour = "P_inf" )) +
+  geom_line(aes(y = p_inf, colour = "P_inf" )) +
   labs(title = "Probability of infection Over Time",
        x = "Time",
        y = "P_inf",
@@ -207,7 +207,7 @@ x <- make_epicontacts(linelist = linelist,
                       id = "id",
                       from = "from",
                       to = "to",
-                      directed = FALSE)
+                      directed = TRUE)
 
 ## plot epicontacts
 vis_epicontacts(x,
