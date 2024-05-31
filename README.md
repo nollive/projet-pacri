@@ -9,6 +9,15 @@
 
 ### Context 
 
+Respiratory infections are a major public health issue in hospital settings. They can be transmitted from patient to patient, as well as between patients and healthcare workers, resulting in nosocomial or hospital-acquired infections. These infections contribute to the worsening of patients' health and complicate their care.
+
+Pathogens can be transmitted in different ways:
+- Large droplets emitted during speech or coughing, which can lead to short-distance transmission
+- Small aerosols emitted during breathing, which can remain suspended in the air and cause long-distance transmission
+
+A thorough understanding of the respective roles of these transmission modes is essential for developing effective strategies to prevent nosocomial respiratory infections. To date, no model simultaneously integrates these two modes of transmission, and the relative importance of each remains to be evaluated.
+
+The aim of this project is to develop a mathematical model of respiratory pathogen transmission in a hospital ward, combining inter-individual transmission (via an epidemiological model) and airborne transmission (via a biophysical model).
 
 
 ## Instructions
@@ -70,7 +79,7 @@ The project is divided into 4 dependent R scripts:
   This script loads Nods-Cov-2 localization data (& other related objects) from _/out/loc-nodscov2/localization-nodscov2.RData_, defines the objects needed for the simulation (parameters etc...) then compiles model-nodscov2.cpp (and its dependency model-nodscov2_fun.cpp) that is used for the epidemic simulation.
   
   Simulation results, localizations, interactions and parameters used are sad as _/out/sim-nodscov2/&lt;id_sim&gt;-simulation-nodscov2.RData_
-  
+
 </details>
 
 <details>
