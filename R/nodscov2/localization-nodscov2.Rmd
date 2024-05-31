@@ -8,12 +8,10 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
-library(tidyverse)
 library(ggplot2)
 library(lubridate)
 library(igraph)
 library(tidyr)
-library(hrbrthemes)
 library(viridis)
 ```
 
@@ -523,7 +521,7 @@ test_loc %>%
     scale_fill_viridis(discrete = TRUE, alpha=0.6) +
     geom_jitter(color="black", size=0.4, alpha=0.9) +
     ggh4x::facet_grid2(cols = vars(room), scales = "free_y", independent  ="y") +
-    theme_ipsum() +
+    theme_bw() +
     theme(
       legend.position="none",
       plot.title = element_text(size=11),
@@ -541,7 +539,7 @@ test_loc %>%
     scale_fill_viridis(discrete = TRUE, alpha=0.6) +
     geom_jitter(color="black", size=0.4, alpha=0.9) +
     ggh4x::facet_grid2(cols = vars(room), scales = "free_y", independent  ="y") +
-    theme_ipsum() +
+    theme_bw() +
     theme(
       legend.position="none",
       plot.title = element_text(size=11),
@@ -558,7 +556,7 @@ test_loc %>% filter(room == "Restroom") %>%
     geom_boxplot(width=.1) +
     scale_fill_viridis(discrete = TRUE, alpha=0.6) +
     geom_jitter(color="black", size=0.4, alpha=0.9) +
-    theme_ipsum() +
+    theme_bw() +
     theme(
       legend.position="none",
       plot.title = element_text(size=11),

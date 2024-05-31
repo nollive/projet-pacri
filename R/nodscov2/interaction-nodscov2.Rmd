@@ -11,8 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
 library(ggplot2)
 library(lubridate)
-library(tidyverse)
-library(hrbrthemes)
+library(tidyr)
 library(viridis)
 ```
 
@@ -229,7 +228,7 @@ sum_length_cat %>%
     geom_boxplot() +
     scale_fill_viridis(discrete = TRUE, alpha=0.6) +
     geom_jitter(color="black", size=0.4, alpha=0.9) +
-    theme_ipsum() +
+    theme_bw() +
     theme(
       legend.position="none",
       plot.title = element_text(size=11),
@@ -245,7 +244,7 @@ sum_length_cat %>%
     geom_violin() +
     scale_fill_viridis(discrete = TRUE, alpha=0.6) +
     geom_jitter(color="black", size=0.4, alpha=0.9) +
-    theme_ipsum() +
+    theme_bw() +
     theme(
       legend.position="none",
       plot.title = element_text(size=11),
