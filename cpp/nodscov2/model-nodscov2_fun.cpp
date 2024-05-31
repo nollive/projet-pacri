@@ -23,6 +23,7 @@ double sd_inf_g = (2.12 * 24*60*2)*z;
 double shape_inf_g = pow(m_inf_g,2) / pow(sd_inf_g, 2);
 double scale_inf_g = pow(sd_inf_g,2) / m_inf_g;
 
+double env_thresold = 1000;
 
 // R UNIQUE(X) FUNCTION
 Rcpp::Environment base("package:base");
@@ -470,7 +471,14 @@ Rcpp::NumericVector Lambda_e (
                     break;
                 }
             }
-        lambda_e_ti[j] = epsilon * deltat * environment[index_room];
+         
+        // VIRAL LOAD THRESOLD
+        if (environment[index_room] > env_thresold){
+            lambda_e_ti[j] = epsilon * deltat * environment[index_room];
+        } else{
+            lambda_e_ti[j] = 0;
+        }
+        
     }
   }
 

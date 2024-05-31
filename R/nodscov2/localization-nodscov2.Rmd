@@ -8,14 +8,16 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
-#library(tidyverse)
+library(tidyverse)
 library(ggplot2)
 library(lubridate)
 library(igraph)
 library(tidyr)
+library(hrbrthemes)
+library(viridis)
 ```
 
-```{r}
+```{r Paths setup}
 wd <- getwd()
 knitr::opts_chunk$set(root.dir = wd)
 
@@ -32,7 +34,7 @@ if (!dir.exists(loc_nodscov2_path)) {
 ### WIP 
 
 ## NodsCov2 data (not shared)
-```{r}
+```{r Load data}
 load(file.path(nodscov2_path, "admission_ctc_nodscov2.RData"))
 load(file.path(nodscov2_path, "list_ward.RData"))
 # load("Y:/ogaufres/pacri-non-sync/data/data-nodscov2/admission_ctc_nodscov2.RData")
@@ -41,13 +43,13 @@ load(file.path(nodscov2_path, "list_ward.RData"))
 
 
 ## FIXING ENCODING
-```{r}
+```{r Fixing encoding}
 Encoding(admission$hospital) <- 'latin1'
 ```
 
 
 ## Raymond Poincaré reanimation ward
-```{r}
+```{r Select ward of interest}
 data <- list_ward[["Raymond_Poincare-Reanimation-20200506-20200507"]]
 admission <- admission %>%
   ## Remove visitors/admin/logistics/investigators
@@ -74,7 +76,7 @@ data <- unique(data)
 
 
 ## SUBDIVIDING EVERY 30s
-```{r}
+```{r Subdividing interactions}
 begin_date <- as.POSIXct(min(data$date_posix_first))
 end_date <- as.POSIXct(max(data$date_posix_first + data$length))
 time_spent <- difftime(end_date, begin_date, units = "mins")  
@@ -103,7 +105,7 @@ global_interaction <- lapply(1:n_subdivisions, function(t){
 ```
 
 ## DOUBLE ROOMS
-```{r}
+```{r Double rooms}
 ## 3 CHOICES
 # 1. KEEP THE INTERACTION REGARDLESS OF THE SINGLE/DOUBLE ROOM ASSIGNATION (WE CHOSE THIS ASSUMPTION)
 
@@ -127,7 +129,7 @@ global_interaction <- lapply(1:n_subdivisions, function(t){
 
 
 ## ROOMS
-```{r}
+```{r Rooms}
 rooms <- admission %>%
   filter(status == "PA") %>%
   distinct(id) %>%
@@ -155,7 +157,7 @@ double_rooms <- list(c("001-0038-B-S", "001-0039-B-F"), c("001-0127-B-A", "001-0
 
 
 ## INTERACTION CLUSTERS FOR EACH TIME t
-```{r}
+```{r Interaction clusters}
 clusters <- lapply(global_interaction, function(df) {
   # df to non oriented graph based on interaction happening at time t
   graph <- graph_from_data_frame(df, directed = FALSE)
@@ -173,7 +175,7 @@ clusters <- lapply(global_interaction, function(df) {
 
 
 ## SHIFTS INFERENCE
-```{r}
+```{r Shifts}
 # Pivot -> get all int for each individual
 df_long <- data %>%
   mutate(date_posix_end = date_posix_first + length) %>% 
@@ -210,7 +212,7 @@ shifts <- df_long %>%
 ```
 
 ## CHECK INDIVIDUALS IN ADMISSION: HERE OR NOT HERE DURING THE STUDY?
-```{r}
+```{r IDS interactings}
 id_interacting <- data %>%
   pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>% distinct(individual) %>% pull()
 id_total <- admission %>% distinct(id) %>% pull()
@@ -225,7 +227,7 @@ HCW_interacting_ids <- admission %>% filter(status == "PE") %>% filter(id %in% i
 
 
 ## Localization INFERENCE (only for PE, PAs stay in their room) - INTERACTIONS
-```{r}
+```{r Loc for interactions}
 ############################################################
 ## ASSIGNING localization FOR THE INDIVIDUALS INTERACTING ##
 ############################################################
@@ -282,7 +284,7 @@ global_localization <- lapply(1:n_subdivisions, function(t) {
 
 
 ## localization INFERENCE (only for PE, PAs stay in their room) - NO INTERACTION
-```{r}
+```{r Loc t = 1}
 ################################################################
 ## ASSIGNING localization FOR THE INDIVIDUALS NOT INTERACTING ##
 ################################################################
@@ -299,7 +301,7 @@ global_localization[[1]]$localization <- ifelse(is.na(global_localization[[1]]$l
 ```
 
 
-```{r}
+```{r Loc t = 2}
 ############
 ## t == 2 ##
 ############
@@ -354,7 +356,7 @@ rm(ind_loc_t2)
 ```
 
 
-```{r}
+```{r Loc t>2}
 ############
 ## t > 2 ###
 ############
@@ -425,7 +427,7 @@ y <- do.call(rbind,global_localization)
 
 
 ## MUTATE "NOT HERE" TO -1 (for Rcpp) 
-```{r}
+```{r NOT HERE to -1}
 global_localization <- lapply( 1:n_subdivisions, function(t){
   loc_t <- global_localization[[t]]
   loc_t <- loc_t %>% mutate(localization = ifelse(localization == "NOT HERE", -1, localization))
@@ -437,7 +439,7 @@ global_localization <- lapply( 1:n_subdivisions, function(t){
 
 
 ## REBUILD GLOBAL_INTERACTION WITH CORRECT LOCALIZATION
-```{r}
+```{r Global_interaction with correct loc}
 test_global_int <- global_interaction
 
 # FOR EACH t
@@ -481,7 +483,7 @@ global_interaction <- test_global_int
 
 ## TEMPORARY
 #SAVE TO .RData FILES
-```{r}
+```{r Save to .RData}
 save(clusters,
      global_localization,
      shifts,
@@ -498,7 +500,7 @@ save(clusters,
 
 
 ## DISTRIBUTION OF TIME SPENT IN RESTROOM/CORRIDOR BY CATEGORY OF HCW
-```{r}
+```{r Time spent in Restroom/Corridor by HCW cat}
 load(file.path(loc_nodscov2_path,"localization-nodscov2.RData")) ##overwrite admission
 
 test_loc <- do.call(rbind, global_localization) %>%
@@ -512,12 +514,9 @@ test_loc <- do.call(rbind, global_localization) %>%
     .groups = 'drop'
   )
 
-## Violin and jitter
-library(tidyverse)
-library(hrbrthemes)
-library(viridis)
 
 
+# Boxplot & jittered points (Restroom & Corridor)
 test_loc %>%
   ggplot( aes(x=cat, y=sum_room/3600, fill=cat)) +
     geom_boxplot() +
@@ -534,7 +533,7 @@ test_loc %>%
     xlab("") +
     ylab("Cumulative time interacting (h)")
 
-    
+# Violin plot (Restroom & Corridor)    
 test_loc %>%
   ggplot( aes(x=cat, y=sum_room/3600, fill=cat)) +
     geom_violin() +
@@ -552,7 +551,7 @@ test_loc %>%
     xlab("") +
     ylab("Cumulative time interacting (h)")
     
-
+# Violin plot (Restroom)
 test_loc %>% filter(room == "Restroom") %>%
   ggplot( aes(x=cat, y=sum_room/3600, fill=cat)) +
     geom_violin() +
@@ -565,7 +564,7 @@ test_loc %>% filter(room == "Restroom") %>%
       plot.title = element_text(size=11),
       axis.text.x = element_text(angle = 35, hjust = 1)
     ) +
-    ggtitle("Cumulative time spent in restroom or corridor by category of HCW") +
+    ggtitle("Cumulative time spent in Restroom by category of HCW") +
     xlab("") +
     ylab("Cumulative time interacting (h)")
 ```
