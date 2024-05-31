@@ -26,17 +26,17 @@ The aim of this project is to develop a mathematical model of respiratory pathog
 <details>
   <summary> R </summary>
 
-* dplyr
-* tidyr
-* tidyverse
-* lubridate
-* ggplot2
-* hrbrthemes
-* viridis
-* igraph
-* Rcpp
-* c++
-* epicontacts
+* dplyr (1.1.4)
+* tidyr (1.3.1)
+* tidyverse (2.0.0)
+* lubridate (1.9.3)
+* ggplot2 (3.5.0)
+* ggh4x (0.2.8)
+* hrbrthemes (0.8.7)
+* viridis (0.6.5)
+* igraph (2.0.3)
+* Rcpp (1.0.12)
+* epicontacts (1.1.4)
 
 </details>
 
