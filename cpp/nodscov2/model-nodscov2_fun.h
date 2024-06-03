@@ -120,11 +120,6 @@ RcppExport Rcpp::DataFrame Update_status_bis(
     int t
 );
 
-RcppExport int Get_loc_HCW(
-    Rcpp::String id_HCW,
-    Rcpp::DataFrame admission,
-    Rcpp::DataFrame localization_ti
-);
 
 RcppExport int Get_loc_j(
     Rcpp::String id,
