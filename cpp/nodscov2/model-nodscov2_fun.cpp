@@ -32,8 +32,8 @@ Function do_sample = base["sample"];
 //////////////////////////////////////////////
 // [[Rcpp::export]]
 Rcpp::IntegerVector Get_status_t(
-    Rcpp::DataFrame global_status,
-    int t
+    const Rcpp::DataFrame& global_status,
+    const int& t
 ) {
     Rcpp::IntegerVector t_inf = global_status["t_inf"];
     Rcpp::IntegerVector t_incub = global_status["t_incub"];
@@ -58,10 +58,10 @@ Rcpp::IntegerVector Get_status_t(
 //////////////////////////////////////////////
 // [[Rcpp::export]]
 int Get_status_j(
-    Rcpp::String id,
-    Rcpp::DataFrame global_status,
-    Rcpp::DataFrame admission,
-    int t
+    const Rcpp::String& id,
+    const Rcpp::DataFrame& global_status,
+    const Rcpp::DataFrame& admission,
+    const int& t
 ) {
     int status_j = -1; // if returns -1 --> error (id not in admission)
     Rcpp::CharacterVector ids = admission["id"];
@@ -94,12 +94,12 @@ int Get_status_j(
 //////////////////////////////////////////////
 // [[Rcpp::export]]
 Rcpp::String Sample_inf(
-    Rcpp::String id,
-    Rcpp::List list_inf_encountered,
-    Rcpp::DataFrame admission,
-    Rcpp::DataFrame localization_ti,
-    double lambda_e_j,
-    double lambda_c_j
+    const Rcpp::String& id,
+    const Rcpp::List& list_inf_encountered,
+    const Rcpp::DataFrame& admission,
+    const Rcpp::DataFrame& localization_ti,
+    const double& lambda_e_j,
+    const double& lambda_c_j
 ) {
     if (lambda_e_j == 0){ // NO ENV --> CONTACT
         int n_ind = list_inf_encountered.size();
@@ -166,12 +166,12 @@ Rcpp::String Sample_inf(
 //////////////////////////////////////////////
 // [[Rcpp::export]]
 Rcpp::DataFrame Update_status_bis(
-    Rcpp::DataFrame global_status,
-    Rcpp::DataFrame lambda_ti,
-    Rcpp::DataFrame admission,
-    Rcpp::DataFrame interactions_ti,
-    Rcpp::DataFrame localization_ti,
-    int t
+    const Rcpp::DataFrame& global_status,
+    const Rcpp::DataFrame& lambda_ti,
+    const Rcpp::DataFrame& admission,
+    const Rcpp::DataFrame& interactions_ti,
+    const Rcpp::DataFrame& localization_ti,
+    const int& t
 ) {
     Rcpp::NumericVector lambda_c = lambda_ti["lambda_c"];
     Rcpp::NumericVector lambda_e = lambda_ti["lambda_e"];
@@ -229,8 +229,8 @@ Rcpp::DataFrame Update_status_bis(
 //////////////////////////////////////////////
 // [[Rcpp::export]]
 Rcpp::DataFrame Get_t(
-    Rcpp::List Global_list,
-     int t
+    const Rcpp::List& Global_list,
+    const int& t
 ){
     // WARNING: c++ COUNTS STARTS AT 0
     Rcpp::DataFrame df(Global_list[t]);
@@ -241,13 +241,13 @@ Rcpp::DataFrame Get_t(
 //////////////////////////////////////////////
 // [[Rcpp::export]]
 Rcpp::NumericVector Update_environment(
-    Rcpp::DataFrame environment_tim1,
-    Rcpp::DataFrame localization_ti,
-    Rcpp::IntegerVector status_tim1,
-    Rcpp::DataFrame admission, //(id: id of the individual, info: "0" IF PATIENT, "1" IF HCW, room: room assigned to the individual, easier for patients...) 
-    const double mu,
-    const double nu,
-    const double deltat
+    const Rcpp::DataFrame& environment_tim1,
+    const Rcpp::DataFrame& localization_ti,
+    const Rcpp::IntegerVector& status_tim1,
+    const Rcpp::DataFrame& admission,
+    const double& mu,
+    const double& nu,
+    const double& deltat
 ) {
     // THERE IS MULTIPLE WAYS TO ACHIEVE THIS
     // A. (naive) for loop on room ( for loop on individuals (check if patient/HCW and if the localization == room r then check if infected etc))
@@ -320,8 +320,8 @@ Rcpp::NumericVector Update_environment(
 //////////////////////////////////////////////
 // [[Rcpp::export]]
 Rcpp::List List_encountered(
-    Rcpp::String id,
-    Rcpp::DataFrame interaction_ti
+    const Rcpp::String& id,
+    const Rcpp::DataFrame& interaction_ti
 ) {
   Rcpp::List list_id;
   Rcpp::CharacterVector from = interaction_ti["from"];
@@ -346,11 +346,11 @@ Rcpp::List List_encountered(
 //////////////////////////////////////////////
 // [[Rcpp::export]]
 Rcpp::List List_inf_encountered(
-    Rcpp::String id,
-    Rcpp::DataFrame interaction_ti,
-    Rcpp::DataFrame global_status,
-    Rcpp::DataFrame admission,
-    int t
+    const Rcpp::String& id,
+    const Rcpp::DataFrame& interaction_ti,
+    const Rcpp::DataFrame& global_status,
+    const Rcpp::DataFrame& admission,
+    const int& t
 ) {
     Rcpp::List list_encountered = List_encountered(id, interaction_ti);
     Rcpp::List list_inf_encountered;
@@ -371,11 +371,11 @@ Rcpp::List List_inf_encountered(
 //////////////////////////////////////////////
 // [[Rcpp::export]]
 Rcpp::NumericVector Lambda_c (
-    Rcpp::DataFrame lambda_tim1,
-    Rcpp::DataFrame interaction_ti,
-    Rcpp::IntegerVector status_ti,
-    const double beta,
-    const double deltat
+    const Rcpp::DataFrame& lambda_tim1,
+    const Rcpp::DataFrame& interaction_ti,
+    const Rcpp::IntegerVector& status_ti,
+    const double& beta,
+    const double& deltat
 ) {
     Rcpp::CharacterVector ids = lambda_tim1["id"];
     Rcpp::NumericVector temp_lambda_c = lambda_tim1["lambda_c"];
@@ -415,13 +415,13 @@ Rcpp::NumericVector Lambda_c (
 //////////////////////////////////////////////
 // [[Rcpp::export]]
 Rcpp::NumericVector Lambda_e (
-    Rcpp::DataFrame lambda_tim1,
-    Rcpp::DataFrame localization_ti,
-    Rcpp::DataFrame environment_ti,
-    Rcpp::DataFrame admission, 
-    const double epsilon,
-    const double env_thresold,
-    const double deltat
+    const Rcpp::DataFrame& lambda_tim1,
+    const Rcpp::DataFrame& localization_ti,
+    const Rcpp::DataFrame& environment_ti,
+    const Rcpp::DataFrame& admission, 
+    const double& epsilon,
+    const double& env_thresold,
+    const double& deltat
 ) {
     Rcpp::CharacterVector ids_lambda = lambda_tim1["id"];
     Rcpp::NumericVector temp_lambda_e = lambda_tim1["lambda_e"];
@@ -553,9 +553,9 @@ int Incub_period_uniform() {
 //////////////////////////////////////////////
 // [[Rcpp::export]]
 int Get_loc_j(
-    Rcpp::String id,
-    Rcpp::DataFrame admission,
-    Rcpp::DataFrame localization_ti
+    const Rcpp::String& id,
+    const Rcpp::DataFrame& admission,
+    const Rcpp::DataFrame& localization_ti
 ) {
     Rcpp::CharacterVector ids = admission["id"];
     Rcpp::IntegerVector info = admission["info"];
