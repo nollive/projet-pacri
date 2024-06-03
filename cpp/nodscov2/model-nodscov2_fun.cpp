@@ -557,7 +557,7 @@ int Get_loc_HCW(
     Rcpp::DataFrame admission,
     Rcpp::DataFrame localization_ti
 ) {
-    int localization = -1;
+    int localization = -1; // could be different than -1/NOT HERE (error easier to see)
     Rcpp::CharacterVector ids = admission["id"];
     Rcpp::CharacterVector ids_HCW = localization_ti["id"];
     Rcpp::IntegerVector localizations_HCW = localization_ti["localization"];
@@ -611,7 +611,18 @@ int Get_loc_j(
         return rooms[index_j];
     // IND IS A HCW --> LOCALIZATION
     } else if (info[index_j] == 1){
-        return Get_loc_HCW(id, admission, localization_ti);
+        //GET_LOC_HCW
+        Rcpp::IntegerVector localizations_HCW = localization_ti["localization"];
+        Rcpp::CharacterVector ids_HCW = localization_ti["id"];
+        // Search for HCW's index in localization
+        int index_localization_j = -1;
+        for (int k = 0; k < ids_HCW.size(); k++){
+            if (id == ids_HCW[k]){
+            index_localization_j = k;
+            break;
+            }
+        }
+        return localizations_HCW[index_localization_j];
     // IF ISSUE -> RETURNS -1
     } else {
         return -1;

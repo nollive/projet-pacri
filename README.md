@@ -86,6 +86,14 @@ The project is divided into 4 dependent R scripts:
       For the time step t, the steps are the following: 
       1. We apply an exponential decay $exp(-\mu \delta t)$ to the viral load at t-1 in each room $$ \forall t > 2, \, E_{k}(t) = \mathbf{E_{k}(t-1) e^{- \mu \delta t}} + \nu \delta t \sum_{j \, \epsilon \, I} {1_{\left \{ S(j, k, t_{i - 1})= 1 \right \}}} $$
     </details>
+    <details>
+      <summary>Update_environment</summary>
+      This function update the viral load in each room for each time step. It is taking into account viral inactivation of the previous time step viral load and different scenarios depending on the hospital rooms (FUTURE IMPLEMENTATION).
+      For the time step t, the steps are the following: 
+      1. We apply an exponential decay $exp(-\mu \delta t)$ to the viral load at t-1 in each room $$ \forall t > 2, \, E_{k}(t) = \mathbf{E_{k}(t-1) e^{- \mu \delta t}} + \nu \delta t \sum_{j \, \epsilon \, I} {1_{\left \{ S(j, k, t_{i - 1})= 1 \right \}}} $$
+    </details>
+
+
   </details>
   Simulation results, localizations, interactions and parameters used are sad as _/out/sim-nodscov2/&lt;id_sim&gt;-simulation-nodscov2.RData_
 </details>
