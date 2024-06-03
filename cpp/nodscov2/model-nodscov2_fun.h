@@ -11,21 +11,21 @@ using namespace Rcpp;
 // extern double nu;
 // extern double mu;
 // extern double tau;
-extern double deltat;
-extern double mIncub;
-extern double sdIncub;
-extern double maxPCRDetectability;
-extern double m_incub_g;
-extern double sd_incub_g;
-extern double shape_incub_g;
-extern double scale_incub_g;
+extern const double deltat;
+extern const double mIncub;
+extern const double sdIncub;
+extern const double maxPCRDetectability;
+extern const double m_incub_g;
+extern const double sd_incub_g;
+extern const double shape_incub_g;
+extern const double scale_incub_g;
 
-extern double mInf;
-extern double sdInf;
-extern double m_inf_g;
-extern double sd_inf_g;
-extern double shape_inf_g;
-extern double scale_inf_g;
+extern const double mInf;
+extern const double sdInf;
+extern const double m_inf_g;
+extern const double sd_inf_g;
+extern const double shape_inf_g;
+extern const double scale_inf_g;
 
 
 RcppExport int Incub_period_gamma();
