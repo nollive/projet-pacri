@@ -30,7 +30,10 @@ if (!dir.exists(sim_nodscov2_path)) {
 ```{r}
 #load("Y:/ogaufres/pacri-non-sync/data/data-nodscov2/admission_ctc_nodscov2.RData")
 #load("Y:/ogaufres/pacri-non-sync/data/data-nodscov2/list_ward.RData")
-load(file.path(loc_nodscov2_path,"localization-nodscov2.RData")) ##overwrite admission
+#load(file.path(loc_nodscov2_path,"localization-nodscov2.RData")) ##overwrite admission
+
+##dev
+load(file.path(loc_nodscov2_path,"dev-localization-nodscov2.RData")) ##overwrite admission
 ```
 
 ## ADMISSION
@@ -40,7 +43,7 @@ admission_sim <- admission %>%
   select(id,info) %>%
   mutate(id_ind = id) %>% 
   left_join(rooms, by = c("id_ind" = "id")) %>%
-  mutate(room = ifelse(info == 1, rooms[rooms$id == "PE", "id_room"], room)) %>%
+  mutate(room = ifelse(info == 1, rooms[rooms$id == "M-PM", "id_room"], room)) %>%
   select(id,info,room)
 admission_sim$info <- as.integer(admission_sim$info)
 admission_sim$room <- as.integer(admission_sim$room)

@@ -116,6 +116,16 @@ ggplot(viral_load_over_time, aes(x = time, y = viral_load, color = factor(room))
        color = "Room") +
   theme_bw() +
   theme(axis.text.x=element_text(angle=45, hjust=1))
+
+
+ggplot(viral_load_over_time %>% filter(!room %in% 1:17), aes(x = time, y = viral_load, color = factor(room))) +
+  geom_line() +
+  labs(title = "Viral Load in Rooms Over Time",
+       x = "Time",
+       y = "Viral Load",
+       color = "Room") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45, hjust=1))
 ```
 
 
@@ -171,11 +181,22 @@ list_S <- status_sim %>% filter(t_inf == -1) %>% select(id) %>% left_join(admiss
 ## Infection chain
 ```{r}
 library(epicontacts)
-id_index <- status_sim %>% filter(inf_by == "INDEX") %>% pull(id)
+
+HCW_interacting_ids <- admission %>% filter(status == "PE") %>% filter(id %in% id_interacting) %>% pull(id)
+cat_paramedical <- c("nurse", "student nurse", "aux nurse", "other")
+cat_medical <- c("physician", "ext physician", "reeducation staff")
+id_paramedical <- admission %>% filter(id %in% HCW_interacting_ids & cat %in% cat_paramedical) %>% pull(id)
+id_medical <- admission %>% filter(id %in% HCW_interacting_ids & cat %in% cat_medical) %>% pull(id)
+id_patient <- admission %>% filter(status == "PA") %>% filter(id %in% id_interacting) %>% pull(id)
+
+
 ## linelist object
 linelist <- left_join(admission_sim %>% filter(id %in% id_interacting), status_sim, by = join_by(id))
+linelist <- linelist %>% left_join(admission %>% select(id,cat), by = join_by(id))
 linelist <- linelist %>%
-  mutate(type = ifelse(info == 0, "PATIENT", "HEALTHCARE WORKER")) %>%
+  mutate(type = ifelse(id %in% id_medical , "MEDICAL", NA)) %>%
+  mutate(type = ifelse(id %in% id_paramedical , "PARAMEDICAL", type)) %>%
+  mutate(type = ifelse(id %in% id_patient , "PATIENT", type)) %>%
   mutate(type = ifelse(id == id_index, "INDEX", type)) 
 
 env_linelist <- data.frame(id = paste0("ENVIRONMENT-",rooms %>% distinct(id_room, .keep_all = TRUE) %>% pull(id_room)),
@@ -215,12 +236,12 @@ x <- make_epicontacts(linelist = linelist,
 vis_epicontacts(x,
                 node_color = "type",
                 edge_color = "cause",
-                col_pal =  cases_pal,
+                col_pal =  edges_pal,
                 # edge_col_pal = spectral,
                 # edge_label = "inf_interval",
                 label = "room",
                 node_shape = "type",
-                shape = c(`HEALTHCARE WORKER` = "circle", `PATIENT` = "circle", `ROOM` = "bed", `INDEX` = "circle"),
+                shape = c(`PARAMEDICAL` = "circle", `MEDICAL` = "circle",  `PATIENT` = "circle", `ROOM` = "bed", `INDEX` = "circle"),
                 thin = TRUE,
                 selector = TRUE
                 )
