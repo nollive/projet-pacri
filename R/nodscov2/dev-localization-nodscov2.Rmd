@@ -116,10 +116,10 @@ rooms <- rooms %>%
 ### DOUBLE ROOMS
 ## "001-0038-B-S" and = "001-0039-B-F" are in the same room
 ## "001-0127-B-A" and "001-0128-Z-K" are in the same room
-rooms <-rooms %>% mutate(room = ifelse(id == "001-0038-B-S", rooms[rooms$id == "001-0039-B-F", "room"], room),
+rooms <- rooms %>% mutate(room = ifelse(id == "001-0038-B-S", rooms[rooms$id == "001-0039-B-F", "room"], room),
                          id_room = ifelse(id == "001-0038-B-S", rooms[rooms$id == "001-0039-B-F", "id_room"], id_room))
 
-rooms <-rooms %>% mutate(room = ifelse(id == "001-0128-Z-K", rooms[rooms$id == "001-0127-B-A", "room"], room),
+rooms <- rooms %>% mutate(room = ifelse(id == "001-0128-Z-K", rooms[rooms$id == "001-0127-B-A", "room"], room),
                          id_room = ifelse(id == "001-0128-Z-K", rooms[rooms$id == "001-0127-B-A", "id_room"], id_room))
 
 double_rooms <- list(c("001-0038-B-S", "001-0039-B-F"), c("001-0127-B-A", "001-0128-Z-K"))
@@ -178,7 +178,7 @@ shifts <- df_long %>%
     .groups = 'drop'
   ) %>%
   arrange(individual, shift_id) %>%
-  left_join(admission %>% select(id,status), by = c("individual" = "id")) %>%
+  left_join(admission %>% select(id,cat,status), by = c("individual" = "id")) %>%
   filter(status == "PE")
 
 ## check which indivuals have > 3 "shifts"
@@ -190,32 +190,78 @@ sup_3_shifts <- shifts %>%
   select(individual, cat, n_shifts)
 ```
 
+## SHIFTS VS INTERACTION
+```{r}
+df_long <- data %>%
+  mutate(date_posix_end = date_posix_first + length) %>% 
+  pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>%
+  arrange(individual, date_posix_first)
+
+
+calculate_actual_interaction_time <- function(df) {
+  if(nrow(df) == 0) return(0)
+  
+  df <- df %>% arrange(date_posix_first)
+  total_time <- 0
+  current_start <- df$date_posix_first[1]
+  current_end <- df$date_posix_end[1]
+  
+  for(i in 2:nrow(df)) {
+    if(df$date_posix_first[i] <= current_end) {
+      current_end <- max(current_end, df$date_posix_end[i])
+    } else {
+      total_time <- total_time + as.numeric(difftime(current_end, current_start, units = "hours"))
+      current_start <- df$date_posix_first[i]
+      current_end <- df$date_posix_end[i]
+    }
+  }
+  total_time <- total_time + as.numeric(difftime(current_end, current_start, units = "hours"))
+  return(total_time)
+}
+
+len_int <- df_long %>%
+  group_by(individual) %>%
+  summarise(total_int = calculate_actual_interaction_time(cur_data()))
+
+len_shifts <- shifts %>%
+  group_by(individual) %>%
+  summarise(total_shift = sum(shift_length))
+
+len_tot <- left_join(len_shifts, len_int, by = join_by(individual))  %>%
+  mutate(len_diff = total_shift - total_int) %>%
+  left_join(admission %>% select(id,cat), by = c("individual" = "id"))
+
+
+len_tot %>% filter(total_int > total_shift) 
+
+```
+
+
 ## CHECK INDIVIDUALS IN ADMISSION: HERE OR NOT HERE DURING THE STUDY?
 ```{r IDS interactings}
 id_interacting <- data %>%
   pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>% distinct(individual) %>% pull()
 id_total <- admission %>% distinct(id) %>% pull()
-
-
-
 id_not_interacting <- setdiff(id_total, id_interacting)
-print(admission %>% filter(id %in% id_not_interacting))
-## INDIVIDUALS WITH 0 INTERACTIONS ARE HCWs -> WE REMOVE THEM
-HCW_interacting_ids <- admission %>% filter(status == "PE") %>% filter(id %in% id_interacting) %>% pull(id)
-```
 
-```{r}
-admission %>% distinct(cat)
-admission %>% filter(id %in% HCW_interacting_ids) %>% distinct(cat) 
+
+
+# admission %>% distinct(cat)
+# admission %>% filter(id %in% HCW_interacting_ids) %>% distinct(cat) 
 
 cat_paramedical <- c("nurse", "student nurse", "aux nurse", "other")
 cat_medical <- c("physician", "ext physician", "reeducation staff")
-id_paramedical <- admission %>% filter(id %in% HCW_interacting_ids & cat %in% cat_paramedical) %>% pull(id)
-id_medical <- admission %>% filter(id %in% HCW_interacting_ids & cat %in% cat_medical) %>% pull(id)
+id_paramedical <- admission %>% filter(id %in% id_interacting & cat %in% cat_paramedical) %>% pull(id)
+id_medical <- admission %>% filter(id %in% id_interacting & cat %in% cat_medical) %>% pull(id)
+id_hcw <- admission %>% filter(id %in% id_interacting & status == "PE") %>% pull(id)
+id_patient <- admission %>% filter(id %in% id_interacting & status == "PA") %>% pull(id)
+
+
 ```
 
 
-## Localization INFERENCE (only for PE, PAs stay in their room) - INTERACTIONS
+
+## Localization INFERENCE (FOR ALL INDIVIDUALS) - INTERACTIONS
 ```{r Loc for interactions}
 ############################################################
 ## ASSIGNING localization FOR THE INDIVIDUALS INTERACTING ##
@@ -227,7 +273,7 @@ global_localization <- list()
 
 
 global_localization <- lapply(1:n_subdivisions, function(t) {
-  localization_t <- data.frame(id = HCW_interacting_ids, localization = NA, time = t) ##only hcw that are actually here 
+  localization_t <- data.frame(id = id_interacting, localization = NA, time = t) ##only for individual that interacts
   # Interactions at time t
   interactions_t <- global_interaction[[t]]
   clusters_t <- clusters[[t]]
@@ -276,7 +322,7 @@ global_localization <- lapply(1:n_subdivisions, function(t) {
     } else if (ONLY_MEDICAL){
       cluster_localization <- rooms[rooms$id == "M-PE", "id_room"] ## ONLY MEDICAL INTERACTING -> OFFICE
     } else if (MEDICAL_AND_PARAMEDICAL){
-      cluster_localization <- rooms[rooms$id == "M-PM", "id_room"] ## ONLY MEDICAL AND PARAMEDICAL -> ???
+      cluster_localization <- rooms[rooms$id == "PM-PM", "id_room"] ## ONLY MEDICAL AND PARAMEDICAL -> NURSING STATION ?
     } else {
       cluster_localization <- "MISSED LOCALIZATION OF CLUSTER"
     }
@@ -299,6 +345,25 @@ global_localization <- lapply(1:n_subdivisions, function(t) {
 ```{r}
 test_loc <-  do.call(rbind, global_localization) %>% left_join(rooms %>% select(id_room, room), by = c("localization" = "id_room"))
 View(test_loc %>% group_by(localization) %>% summarise (n = n()) %>% left_join(rooms %>% select(id_room, room), by = c("localization" = "id_room")))
+```
+
+## Smoothing (if <5min between two interaction in the same room)
+```{r}
+id_room_patient <- rooms %>% 
+  filter(id %in% (admission %>% filter(status == "PA") %>% pull(id))) %>%
+  distinct(id_room) %>%
+  pull()
+
+test_loc <- do.call(rbind, global_localization)
+
+for (id_j in id_interacting){
+  loc_j <- test_loc %>% filter(id == id_j)
+}
+
+```
+
+
+```{r}
 ```
 
 
@@ -530,35 +595,38 @@ for (t in 1:length(test_global_int)) {
   interactions <- test_global_int[[t]]
   cluster <- clusters[[t]]
   
-  # FOR EACH INT 
-  for (j in 1:nrow(interactions)) {
-    interaction <- interactions[j, ]
-    id_from <- interaction$from ##from and to are in the same cluster
-    # CLUSTER ASSOCIATED WITH THIS INTERACTION
-    cluster_id <- NA  
-    for (k in 1:length(cluster)) {
-      if (id_from %in% cluster[[k]]) {
-        cluster_id <- k
-        break
+  if (nrow(interactions) > 0) {
+    # FOR EACH INT 
+    for (j in 1:nrow(interactions)) {
+      interaction <- interactions[j, ]
+      id_from <- interaction$from ##from and to are in the same cluster
+      # CLUSTER ASSOCIATED WITH THIS INTERACTION
+      cluster_id <- NA  
+      for (k in 1:length(cluster)) {
+        if (id_from %in% cluster[[k]]) {
+          cluster_id <- k
+          break
+        }
       }
-    }
-    localization <- "NOT ASSIGNED"
-    # ID ROOM
-    if (interaction$from_status == "PA" & interaction$to_status == "PA"){ ## IF PA-PA
-      localization1 <- rooms[rooms$id == interaction$from, "id_room"] ## DOUBLE ROOM, FROM/TO SAME THING
-      localization2 <- rooms[rooms$id == interaction$to, "id_room"]
-      localization <- ifelse(localization1 == localization2, localization1, "PROBLEM PA-PA NOT SAME ROOM")
-    } else{ # IF PE-PE OR PA-PE OR PE-PA -> CAUTION, GLOBAL_LOCALIZATION ONLY TRACK HCW (PE) LOCALIZATION, WE CANNOT ACCESS TO CLUSTER'S LOCALIZATION USING A PATIENT (PA) ID
-      patient_id <- ifelse(interaction$from_status == "PA", interaction$to, interaction$from)
-      patient_room <- rooms[rooms$id == patient_id, "id_room"]
-      localization <- global_localization[[t]] %>% filter(id == patient_id) %>% pull(localization)
-    }
+      localization <- "NOT ASSIGNED"
+      # ID ROOM
+      if (interaction$from_status == "PA" & interaction$to_status == "PA") { ## IF PA-PA
+        localization1 <- rooms[rooms$id == interaction$from, "id_room"] ## DOUBLE ROOM, FROM/TO SAME THING
+        localization2 <- rooms[rooms$id == interaction$to, "id_room"]
+        localization <- ifelse(localization1 == localization2, localization1, "PROBLEM PA-PA NOT SAME ROOM")
+      } else { # IF PE-PE OR PA-PE OR PE-PA -> CAUTION, GLOBAL_LOCALIZATION ONLY TRACK HCW (PE) LOCALIZATION, WE CANNOT ACCESS TO CLUSTER'S LOCALIZATION USING A PATIENT (PA) ID
+        patient_id <- ifelse(interaction$from_status == "PA", interaction$to, interaction$from)
+        patient_room <- rooms[rooms$id == patient_id, "id_room"]
+        localization <- global_localization[[t]] %>% filter(id == patient_id) %>% pull(localization)
+      }
 
-    # EDIT GLOBAL_INTERACTION
-    test_global_int[[t]]$cluster_id[j] <- cluster_id
-    test_global_int[[t]]$localization[j] <- localization
+      # EDIT GLOBAL_INTERACTION
+      test_global_int[[t]]$cluster_id[j] <- cluster_id
+      test_global_int[[t]]$localization[j] <- localization
+    }
   }
 }
+
 
 global_interaction <- test_global_int
 ```
@@ -585,7 +653,7 @@ save(clusters,
 
 ## DISTRIBUTION OF TIME SPENT IN RESTROOM/CORRIDOR BY CATEGORY OF HCW
 ```{r Time spent in Restroom/Corridor by HCW cat}
-load(file.path(loc_nodscov2_path,"dev-localization-nodscov2.RData")) ##overwrite admission
+#load(file.path(loc_nodscov2_path,"dev-localization-nodscov2.RData")) ##overwrite admission
 
 id_interacting <- do.call(rbind,global_interaction) %>%
   pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>%
@@ -673,91 +741,31 @@ test_loc %>% filter(room == "Medical Restroom" | room == "Paramedical Restroom")
 
 
 
+
+## TEMP - Tracking individual
+```{r}
+ind = "001-0001-D-J"
+paths <- do.call(rbind, global_localization) %>% left_join(rooms %>% select(id_room,room), by = c("localization" = "id_room")) %>% mutate(room = ifelse(is.na(room), "-1 NOT HERE", room))
+ 
+fig_path <- file.path(loc_nodscov2_path,"..","fig")
+
+ggplot(paths %>% filter(id == ind), aes(x = time*30 + begin_date, y = room, color = as.factor(id))) +
+  geom_path(aes(group = id)) +  # geom_path pour les lignes connectées
+  geom_point(aes(shape = as.factor(id))) +  # geom_point pour les points
+  labs(color = "ID", shape = "ID") +  # Légendes pour les couleurs et les formes
+  theme_bw() +  # Thème en noir et blanc
+  ggtitle("Trajectoires des identifiants en fonction du temps") +  # Titre du graphique
+  xlab("Temps") +  # Label de l'axe X
+  ylab("Pièce") +  # Label de l'axe Y
+  facet_wrap(~ id)  # Facet pour créer un sous-graphe pour chaque identifiant
+ggsave(file = file.path(fig_path,"fig_traj.png"), height = 4, width = 20)
+```
+
+
 <!-- ################################# GARBAGE ############################## -->
 
 
 
-```{r}
-############################################################
-## ASSIGNING localization FOR THE INDIVIDUALS INTERACTING ##
-############################################################
-
-## Store info when there is more than one patient in clusters -> fix later
-cluster_info_list <- list()
-global_localization_bis <- list()
-
-
-global_localization_bis <- lapply(1:n_subdivisions, function(t) {
-  localization_t <- data.frame(id = HCW_interacting_ids, localization = NA, time = t) ##only hcw that are actually here 
-
-  # Interactions at time t
-  interactions_t <- global_interaction[[t]]
-  clusters_t <- clusters[[t]]
-  # For each clusters of individuals at time t
-  lapply(clusters_t, function(cluster) {
-    # IF THERE IS ONLY ONE PATIENT IN THE CLUSTER
-    ONE_patient_in_cluster <- length(unique(cluster[!cluster %in% HCW_interacting_ids])) == 1
-    ## IF IN DOUBLE ROOM (MUST BE ONLY THE TWO PATIENTS, NOT THE TWO PATIENT + ANOTHER PATIENT)
-    IN_DOUBLE_ROOM_N1 <- identical(unique(cluster[!cluster %in% HCW_interacting_ids]),
-                                   double_rooms_bis[[1]])
-    IN_DOUBLE_ROOM_N2 <- identical(unique(cluster[!cluster %in% HCW_interacting_ids]),
-                                   double_rooms_bis[[2]])
-    # IF THERE IS MULTIPLE PATIENTS IN THE CLUSTER (AND NOT IN DOUBLE ROOM)
-    MULTIPLE_patients_in_cluster <- length(unique(cluster[!cluster %in% HCW_interacting_ids])) > 1 & !(IN_DOUBLE_ROOM_N1 | IN_DOUBLE_ROOM_N2)
-    
-    ## localization OF THE CLUSTER
-    if (MULTIPLE_patients_in_cluster){
-      cluster_localization <- rooms_bis[rooms_bis$id == "ALL", "id_room"]
-    } else if (IN_DOUBLE_ROOM_N1) {
-      cluster_localization <- unique(rooms_bis[rooms_bis$id == double_rooms_bis[[1]][[1]], "id_room"])
-    } else if (IN_DOUBLE_ROOM_N2) {
-      cluster_localization <- unique(rooms_bis[rooms_bis$id == double_rooms_bis[[2]][[1]], "id_room"])
-    } else if (ONE_patient_in_cluster) {
-      cluster_localization <- rooms_bis[rooms_bis$id == cluster[!cluster %in% HCW_interacting_ids], "id_room"]
-    } else {
-      cluster_localization <- rooms_bis[rooms_bis$id == "PE", "id_room"] ## ONLY HCW INTERACTING
-    }
-    ## Assign the localization for individuals inside the cluster (<<- to edit localization_t defined outside clusters_t's lapply scope)
-    localization_t$localization <<- ifelse(localization_t$id %in% cluster, cluster_localization, localization_t$localization)
-
-    ## MULTIPLE PATIENTS IN THE CLUSTER --> TEMPORARY, FIXED LATER
-    if (MULTIPLE_patients_in_cluster) {
-      cluster_possible_localization <- rooms_bis[rooms_bis$id %in% cluster[!cluster %in% HCW_interacting_ids], "id_room"]
-      cluster_info <- data.frame(Cluster = t, Patients = cluster[!cluster %in% HCW_interacting_ids])
-      cluster_info_list <<- append(cluster_info_list, list(cluster_info))
-    }
-  })
-  
-  return(localization_t)
-})
-
-
-rooms_bis <- admission %>%
-  filter(status == "PA") %>%
-  distinct(id) %>%
-  mutate(room = as.factor(row_number())) %>%
-  mutate(id_room = as.factor(row_number())) %>%
-  select(id_room,room, id)
-
-rooms_bis <- rooms_bis %>%
-  bind_rows(data.frame(room = "Restroom", id = "PE", id_room = as.factor(nrow(rooms_bis) + 1))) %>%
-  bind_rows(data.frame(room = "Corridor", id = "ALL", id_room = as.factor(nrow(rooms_bis) + 2)))
-
-### DOUBLE ROOMS
-## "001-0038-B-S" and = "001-0039-B-F" are in the same room
-## "001-0127-B-A" and "001-0128-Z-K" are in the same room
-rooms_bis <-rooms_bis %>% mutate(room = ifelse(id == "001-0038-B-S", rooms_bis[rooms_bis$id == "001-0039-B-F", "room"], room),
-                         id_room = ifelse(id == "001-0038-B-S", rooms_bis[rooms_bis$id == "001-0039-B-F", "id_room"], id_room))
-
-rooms_bis <-rooms_bis %>% mutate(room = ifelse(id == "001-0128-Z-K", rooms_bis[rooms_bis$id == "001-0127-B-A", "room"], room),
-                         id_room = ifelse(id == "001-0128-Z-K", rooms_bis[rooms_bis$id == "001-0127-B-A", "id_room"], id_room))
-
-double_rooms_bis <- list(c("001-0038-B-S", "001-0039-B-F"), c("001-0127-B-A", "001-0128-Z-K"))
-
-
-test_loc_bis <-  do.call(rbind, global_localization_bis) %>% left_join(rooms_bis %>% select(id_room, room), by = c("localization" = "id_room"))
-View(test_loc_bis %>% group_by(localization) %>% summarise (n = n()) %>% left_join(rooms_bis %>% select(id_room, room), by = c("localization" = "id_room")))
-```
 
 
 
