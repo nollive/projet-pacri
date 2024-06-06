@@ -136,16 +136,20 @@ rooms <- admission %>%
   select(id_room,room, id)
 
 rooms <- rooms %>%
-  bind_rows(data.frame(room = "Restroom", id = "PE", id_room = as.factor(nrow(rooms) + 1))) %>%
-  bind_rows(data.frame(room = "Corridor", id = "ALL", id_room = as.factor(nrow(rooms) + 2)))
+  bind_rows(data.frame(room = "Medical Restroom", id = "R-M-PE", id_room = as.factor(nrow(rooms) + 1))) %>%
+  bind_rows(data.frame(room = "Paramedical Restroom", id = "R-PM-PE", id_room = as.factor(nrow(rooms) + 2))) %>%
+  bind_rows(data.frame(room = "Nursing station", id = "PM-PE", id_room = as.factor(nrow(rooms) + 3))) %>%
+  bind_rows(data.frame(room = "Office", id = "M-PE", id_room = as.factor(nrow(rooms) + 4))) %>%
+  bind_rows(data.frame(room = "Corridor", id = "ALL", id_room = as.factor(nrow(rooms) + 5))) %>% 
+  bind_rows(data.frame(room = "only med & paramed", id = "M-PM", id_room = as.factor(nrow(rooms) + 6)))
 
 ### DOUBLE ROOMS
 ## "001-0038-B-S" and = "001-0039-B-F" are in the same room
 ## "001-0127-B-A" and "001-0128-Z-K" are in the same room
-rooms <-rooms %>% mutate(room = ifelse(id == "001-0038-B-S", rooms[rooms$id == "001-0039-B-F", "room"], room),
+rooms <- rooms %>% mutate(room = ifelse(id == "001-0038-B-S", rooms[rooms$id == "001-0039-B-F", "room"], room),
                          id_room = ifelse(id == "001-0038-B-S", rooms[rooms$id == "001-0039-B-F", "id_room"], id_room))
 
-rooms <-rooms %>% mutate(room = ifelse(id == "001-0128-Z-K", rooms[rooms$id == "001-0127-B-A", "room"], room),
+rooms <- rooms %>% mutate(room = ifelse(id == "001-0128-Z-K", rooms[rooms$id == "001-0127-B-A", "room"], room),
                          id_room = ifelse(id == "001-0128-Z-K", rooms[rooms$id == "001-0127-B-A", "id_room"], id_room))
 
 double_rooms <- list(c("001-0038-B-S", "001-0039-B-F"), c("001-0127-B-A", "001-0128-Z-K"))
@@ -221,10 +225,26 @@ id_not_interacting <- setdiff(id_total, id_interacting)
 print(admission %>% filter(id %in% id_not_interacting))
 ## INDIVIDUALS WITH 0 INTERACTIONS ARE HCWs -> WE REMOVE THEM
 HCW_interacting_ids <- admission %>% filter(status == "PE") %>% filter(id %in% id_interacting) %>% pull(id)
+id_interacting <- data %>%
+  pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>% distinct(individual) %>% pull()
+id_total <- admission %>% distinct(id) %>% pull()
+id_not_interacting <- setdiff(id_total, id_interacting)
+
+
+
+# admission %>% distinct(cat)
+# admission %>% filter(id %in% HCW_interacting_ids) %>% distinct(cat) 
+
+cat_paramedical <- c("nurse", "student nurse", "aux nurse", "other")
+cat_medical <- c("physician", "ext physician", "reeducation staff")
+id_paramedical <- admission %>% filter(id %in% id_interacting & cat %in% cat_paramedical) %>% pull(id)
+id_medical <- admission %>% filter(id %in% id_interacting & cat %in% cat_medical) %>% pull(id)
+id_hcw <- admission %>% filter(id %in% id_interacting & status == "PE") %>% pull(id)
+id_patient <- admission %>% filter(id %in% id_interacting & status == "PA") %>% pull(id)
 ```
 
 
-## Localization INFERENCE (only for PE, PAs stay in their room) - INTERACTIONS
+## Localization INFERENCE (FOR ALL INDIVIDUALS) - INTERACTIONS
 ```{r Loc for interactions}
 ############################################################
 ## ASSIGNING localization FOR THE INDIVIDUALS INTERACTING ##
@@ -236,13 +256,16 @@ global_localization <- list()
 
 
 global_localization <- lapply(1:n_subdivisions, function(t) {
-  localization_t <- data.frame(id = HCW_interacting_ids, localization = NA, time = t) ##only hcw that are actually here 
-
+  localization_t <- data.frame(id = HCW_interacting_ids, localization = NA, time = t) ##only for individual that interacts
   # Interactions at time t
   interactions_t <- global_interaction[[t]]
   clusters_t <- clusters[[t]]
   # For each clusters of individuals at time t
   lapply(clusters_t, function(cluster) {
+    
+    ###########################
+    ## CLUSTER WITH PATIENTS ##
+    ###########################
     # IF THERE IS ONLY ONE PATIENT IN THE CLUSTER
     ONE_patient_in_cluster <- length(unique(cluster[!cluster %in% HCW_interacting_ids])) == 1
     ## IF IN DOUBLE ROOM (MUST BE ONLY THE TWO PATIENTS, NOT THE TWO PATIENT + ANOTHER PATIENT)
@@ -253,7 +276,22 @@ global_localization <- lapply(1:n_subdivisions, function(t) {
     # IF THERE IS MULTIPLE PATIENTS IN THE CLUSTER (AND NOT IN DOUBLE ROOM)
     MULTIPLE_patients_in_cluster <- length(unique(cluster[!cluster %in% HCW_interacting_ids])) > 1 & !(IN_DOUBLE_ROOM_N1 | IN_DOUBLE_ROOM_N2)
     
-    ## localization OF THE CLUSTER
+    ##############################
+    ## CLUSTER WITHOUT PATIENTS ##
+    ##############################
+    ONLY_MEDICAL <-length(unique(cluster[!cluster %in% HCW_interacting_ids])) == 0 &
+      length(unique(cluster[cluster %in% id_paramedical])) == 0
+    
+    ONLY_PARAMEDICAL <- length(unique(cluster[!cluster %in% HCW_interacting_ids])) == 0 &
+      length(unique(cluster[cluster %in% id_medical])) == 0
+    
+    MEDICAL_AND_PARAMEDICAL <- length(unique(cluster[!cluster %in% HCW_interacting_ids])) == 0 &
+      length(unique(cluster[cluster %in% id_medical])) > 0 &
+      length(unique(cluster[cluster %in% id_paramedical])) > 0
+    
+    #################################
+    ## Localization OF THE CLUSTER ##
+    #################################
     if (MULTIPLE_patients_in_cluster){
       cluster_localization <- rooms[rooms$id == "ALL", "id_room"]
     } else if (IN_DOUBLE_ROOM_N1) {
@@ -262,9 +300,16 @@ global_localization <- lapply(1:n_subdivisions, function(t) {
       cluster_localization <- unique(rooms[rooms$id == double_rooms[[2]][[1]], "id_room"])
     } else if (ONE_patient_in_cluster) {
       cluster_localization <- rooms[rooms$id == cluster[!cluster %in% HCW_interacting_ids], "id_room"]
+    } else if (ONLY_PARAMEDICAL){
+      cluster_localization <- rooms[rooms$id == "PM-PE", "id_room"] ## ONLY PARAMEDICAL INTERACTING -> NURSING STATION ?
+    } else if (ONLY_MEDICAL){
+      cluster_localization <- rooms[rooms$id == "M-PE", "id_room"] ## ONLY MEDICAL INTERACTING -> OFFICE
+    } else if (MEDICAL_AND_PARAMEDICAL){
+      cluster_localization <- rooms[rooms$id == "PM-PM", "id_room"] ## ONLY MEDICAL AND PARAMEDICAL -> NURSING STATION ?
     } else {
-      cluster_localization <- rooms[rooms$id == "PE", "id_room"] ## ONLY HCW INTERACTING
+      cluster_localization <- "MISSED LOCALIZATION OF CLUSTER"
     }
+    
     ## Assign the localization for individuals inside the cluster (<<- to edit localization_t defined outside clusters_t's lapply scope)
     localization_t$localization <<- ifelse(localization_t$id %in% cluster, cluster_localization, localization_t$localization)
 
@@ -308,7 +353,11 @@ global_localization[[1]]$localization <- ifelse(is.na(global_localization[[1]]$l
 localization_t1 <- global_localization[[1]]
 localization_t2 <- global_localization[[2]]
 id_not_interacting_t2 <- localization_t2 %>% filter(is.na(localization)) %>% pull(id)
-id_room_t1 <- localization_t1 %>% filter(localization != rooms[rooms$id == "PE", "id_room"] &
+id_room_t1 <- localization_t1 %>% filter(localization != rooms[rooms$id == "R-M-PE", "id_room"] &
+                                           localization != rooms[rooms$id == "R-PM-PE", "id_room"] &
+                                           localization != rooms[rooms$id == "PM-PE", "id_room"] &
+                                           localization != rooms[rooms$id == "M-PE", "id_room"] &
+                                           localization != rooms[rooms$id == "M-PM", "id_room"] &
                                            localization != rooms[rooms$id == "ALL", "id_room"] &
                                            localization != "NOT HERE" &
                                            !is.na(localization)
@@ -316,25 +365,49 @@ id_room_t1 <- localization_t1 %>% filter(localization != rooms[rooms$id == "PE",
   
 
 id_corridor_t1 <- localization_t1 %>% filter(localization == rooms[rooms$id == "ALL", "id_room"]) %>% pull(id)
-id_restroom_t1 <- localization_t1 %>% filter(localization == rooms[rooms$id == "PE", "id_room"]) %>% pull(id)
+id_medical_restroom_t1 <- localization_t1 %>% filter(localization == rooms[rooms$id == "R-M-PE", "id_room"]) %>% pull(id)
+id_paramedical_restroom_t1 <- localization_t1 %>% filter(localization == rooms[rooms$id == "R-PM-PE", "id_room"]) %>% pull(id)
+id_nursing_station_t1 <- localization_t1 %>% filter(localization == rooms[rooms$id == "PM-PE", "id_room"]) %>% pull(id)
+id_office_t1 <- localization_t1 %>% filter(localization == rooms[rooms$id == "M-PE", "id_room"]) %>% pull(id)
+id_medical_paramed_t1 <- localization_t1 %>% filter(localization == rooms[rooms$id == "M-PM", "id_room"]) %>% pull(id)
 id_not_here_t1 <- localization_t1 %>% filter(localization == "NOT HERE") %>% pull(id)
 
 
 for (individual in id_not_interacting_t2){
-  ## 1. IF INDIVIDUAL IS INTERACTING AT t-1 (localization_tm1$localization != "NOT HERE")
-  if (individual %in% id_room_t1){
-    #IF IN ROOM -> CORRIDOR
-    ind_loc_t2 <- rooms[rooms$id == "ALL", "id_room"]
-  } else if (individual %in% id_corridor_t1){
-    #IF IN CORRIDOR -> RESTROOM
-    ind_loc_t2 <- rooms[rooms$id == "PE", "id_room"]
-  } else if (individual %in% id_restroom_t1){
-    #IF RESTROOM --> STAYS IN RESTROOM
-    ind_loc_t2 <- rooms[rooms$id == "PE", "id_room"]
+  if (individual %in% id_paramedical){
     
-    ## 2. IF INDIVIDUAL NOT INTERACTING AT t-1 --> (localization_tm1$localization == "NOT HERE") --> "NOT HERE"
-  } else if (individual %in% id_not_here_t1){
-    ind_loc_t2 <- "NOT HERE"
+    if (individual %in% id_room_t1){
+      ind_loc_t2 <- rooms[rooms$id == "ALL", "id_room"]
+    } else if (individual %in% id_nursing_station_t1){
+      ind_loc_t2 <- rooms[rooms$id == "ALL", "id_room"]
+    } else if (individual %in% id_medical_paramed_t1){
+      ind_loc_t2 <- rooms[rooms$id == "ALL", "id_room"]
+    } else if (individual %in% id_corridor_t1){
+      ind_loc_t2 <- rooms[rooms$id == "R-PM-PE", "id_room"]
+    } else if (individual %in% id_not_here_t1){
+      ind_loc_t2 <- "NOT HERE"
+    } else {
+      ind_loc_t2 <- "ERROR - WRONG LOC PARAMED t2"
+    }
+    
+  } else if (individual %in% id_medical){
+    
+    if (individual %in% id_room_t1){
+      ind_loc_t2 <- rooms[rooms$id == "ALL", "id_room"]
+    } else if (individual %in% id_office_t1){
+      ind_loc_t2 <- rooms[rooms$id == "ALL", "id_room"]
+    } else if (individual %in% id_medical_paramed_t1){
+      ind_loc_t2 <- rooms[rooms$id == "ALL", "id_room"]
+    } else if (individual %in% id_corridor_t1){
+      ind_loc_t2 <- rooms[rooms$id == "R-M-PE", "id_room"]
+    } else if (individual %in% id_not_here_t1){
+      ind_loc_t2 <- "NOT HERE"
+    } else {
+      ind_loc_t2 <- "ERROR - WRONG LOC MED t2"
+    }
+
+  } else {
+    ind_loc_t2 <- "ERROR - ID NOT IN MED/PARAMED"
   }
   ## ASSIGN THE localization OF THE INDIVIDUAL AT t==2
   localization_t2[localization_t2$id == individual, "localization"] <- ind_loc_t2
@@ -348,8 +421,12 @@ rm(localization_t2)
 rm(id_not_interacting_t2)
 rm(id_room_t1)
 rm(id_corridor_t1)
-rm(id_restroom_t1)
 rm(id_not_here_t1)
+rm(id_medical_restroom_t1)
+rm(id_paramedical_restroom_t1)
+rm(id_nursing_station_t1)
+rm(id_office_t1)
+rm(id_medical_paramed_t1)
 rm(ind_loc_t2)
 ```
 
@@ -359,16 +436,7 @@ rm(ind_loc_t2)
 ## t > 2 ###
 ############
 
-## THREE CASES -> 
-    ## 1. IF INDIVIDUAL IS INTERACTING AT t-1 (localization_tm1$localization != "NOT HERE") --> IF IN ROOM -> CORRIDOR, IF IN CORRIDOR -> RESTROOM
-    ## 2. IF INDIVIDUAL NOT INTERACTING AT t-1 AND INTERACTING AT t-2  --> CANNOT BE IN ROOM/CORRIDOR -> Restroom or alone etc
-    ## 3. IF INDIVIDUAL NOT INTERACTING AT t-1 AND NEITHER AT t-2 --> RULES TO BE DEFINED
 
-
-## RULES TO BE DEFINED
-  ## IF IN A ROOM (i.e. localization < 19) at t-1 --> Corridor 
-  ## IF IN CORRIDOR (i.e. localization = 19) at t-1 --> Restroom
-  ## IF NO INTERACTION AT T-1 --> ?
 ta_no_int <- Sys.time()
 for (t in 3:n_subdivisions){
   localization_t <- global_localization[[t]]
@@ -376,7 +444,11 @@ for (t in 3:n_subdivisions){
   
   id_not_interacting_t <- localization_t %>% filter(is.na(localization)) %>% pull(id)
   
-  id_room_tm1 <- localization_tm1 %>% filter(localization != rooms[rooms$id == "PE", "id_room"] &
+  id_room_tm1 <- localization_tm1 %>% filter(localization != rooms[rooms$id == "R-M-PE", "id_room"] &
+                                           localization != rooms[rooms$id == "R-PM-PE", "id_room"] &
+                                           localization != rooms[rooms$id == "PM-PE", "id_room"] &
+                                           localization != rooms[rooms$id == "M-PE", "id_room"] &
+                                           localization != rooms[rooms$id == "M-PM", "id_room"] &
                                            localization != rooms[rooms$id == "ALL", "id_room"] &
                                            localization != "NOT HERE" &
                                            !is.na(localization)
@@ -384,7 +456,11 @@ for (t in 3:n_subdivisions){
   
 
   id_corridor_tm1 <- localization_tm1 %>% filter(localization == rooms[rooms$id == "ALL", "id_room"]) %>% pull(id)
-  id_restroom_tm1 <- localization_tm1 %>% filter(localization == rooms[rooms$id == "PE", "id_room"]) %>% pull(id)
+  id_medical_restroom_tm1 <- localization_tm1 %>% filter(localization == rooms[rooms$id == "R-M-PE", "id_room"]) %>% pull(id)
+  id_paramedical_restroom_tm1 <- localization_tm1 %>% filter(localization == rooms[rooms$id == "R-PM-PE", "id_room"]) %>% pull(id)
+  id_nursing_station_tm1 <- localization_tm1 %>% filter(localization == rooms[rooms$id == "PM-PE", "id_room"]) %>% pull(id)
+  id_office_tm1 <- localization_tm1 %>% filter(localization == rooms[rooms$id == "M-PE", "id_room"]) %>% pull(id)
+  id_medical_paramed_tm1 <- localization_tm1 %>% filter(localization == rooms[rooms$id == "M-PM", "id_room"]) %>% pull(id)
   id_not_here_tm1 <- localization_tm1 %>% filter(localization == "NOT HERE") %>% pull(id)
   
   ## ITERATE ON THE INDIVIDUALS NOT INTERACTING at time t
@@ -395,16 +471,43 @@ for (t in 3:n_subdivisions){
     
     if (in_shift) {
       ## If the individual is within a shift
-      if (individual %in% id_room_tm1) {
-        ind_loc_t <- rooms[rooms$id == "ALL", "id_room"] #IF IN ROOM -> CORRIDOR
-      } else if (individual %in% id_corridor_tm1) {
-        ind_loc_t <- rooms[rooms$id == "PE", "id_room"] #IF IN CORRIDOR -> RESTROOM
-      } else if (individual %in% id_restroom_tm1) {
-        ind_loc_t <- rooms[rooms$id == "PE", "id_room"] #IF RESTROOM --> STAYS IN RESTROOM #### TEMPORARY #########
-      } else if (individual %in% id_not_here_tm1){
-        ind_loc_t <- "NOT HERE"
+      if (individual %in% id_paramedical){
+        if (individual %in% id_room_tm1){
+          ind_loc_t <- rooms[rooms$id == "ALL", "id_room"]
+        } else if (individual %in% id_nursing_station_tm1){
+          ind_loc_t <- rooms[rooms$id == "ALL", "id_room"]
+        } else if (individual %in% id_medical_paramed_tm1){
+          ind_loc_t <- rooms[rooms$id == "ALL", "id_room"]
+        } else if (individual %in% id_corridor_tm1){
+          ind_loc_t <- rooms[rooms$id == "R-PM-PE", "id_room"]
+        } else if (individual %in% id_paramedical_restroom_tm1){
+          ind_loc_t <- rooms[rooms$id == "R-PM-PE", "id_room"]
+        } else if (individual %in% id_not_here_tm1){
+          ind_loc_t <- "NOT HERE"
+        } else {
+          ind_loc_t <- "ERROR - WRONG LOC PARAMED t>2"
+        }
+        
+      } else if (individual %in% id_medical){
+        
+        if (individual %in% id_room_tm1){
+          ind_loc_t <- rooms[rooms$id == "ALL", "id_room"]
+        } else if (individual %in% id_office_tm1){
+          ind_loc_t <- rooms[rooms$id == "ALL", "id_room"]
+        } else if (individual %in% id_medical_paramed_tm1){
+          ind_loc_t <- rooms[rooms$id == "ALL", "id_room"]
+        } else if (individual %in% id_corridor_tm1){
+          ind_loc_t <- rooms[rooms$id == "R-M-PE", "id_room"]
+        } else if (individual %in% id_medical_restroom_tm1){
+          ind_loc_t <- rooms[rooms$id == "R-M-PE", "id_room"]
+        } else if (individual %in% id_not_here_tm1){
+          ind_loc_t <- "NOT HERE"
+        } else {
+          ind_loc_t <- "ERROR - WRONG LOC MED t>2"
+        }
+    
       } else {
-        ind_loc_t <- "ERROR"
+        ind_loc_t <- "ERROR - ID NOT IN MED/PARAMED t>2"
       }
     } else {
       ## If the individual is not within a shift
@@ -502,7 +605,7 @@ save(clusters,
 load(file.path(loc_nodscov2_path,"localization-nodscov2.RData")) ##overwrite admission
 
 test_loc <- do.call(rbind, global_localization) %>%
-  filter(localization %in% c(19,20)) %>%
+  filter(localization %in% c(19:24)) %>%
   left_join(admission %>% select(id, cat), by = join_by(id)) %>% 
   left_join(rooms %>% select(id_room, room), by = c("localization" = "id_room")) %>% 
   group_by(id, cat, localization, room) %>%
@@ -550,7 +653,7 @@ test_loc %>%
     ylab("Cumulative time interacting (h)")
     
 # Violin plot (Restroom)
-test_loc %>% filter(room == "Restroom") %>%
+test_loc %>% filter(room == "Corridor") %>%
   ggplot( aes(x=cat, y=sum_room/3600, fill=cat)) +
     geom_violin() +
     geom_boxplot(width=.1) +
