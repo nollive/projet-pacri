@@ -245,10 +245,6 @@ id_total <- admission %>% distinct(id) %>% pull()
 id_not_interacting <- setdiff(id_total, id_interacting)
 
 
-
-# admission %>% distinct(cat)
-# admission %>% filter(id %in% HCW_interacting_ids) %>% distinct(cat) 
-
 cat_paramedical <- c("nurse", "student nurse", "aux nurse", "other")
 cat_medical <- c("physician", "ext physician", "reeducation staff")
 id_paramedical <- admission %>% filter(id %in% id_interacting & cat %in% cat_paramedical) %>% pull(id)
@@ -284,25 +280,25 @@ global_localization <- lapply(1:n_subdivisions, function(t) {
     ## CLUSTER WITH PATIENTS ##
     ###########################
     # IF THERE IS ONLY ONE PATIENT IN THE CLUSTER
-    ONE_patient_in_cluster <- length(unique(cluster[!cluster %in% HCW_interacting_ids])) == 1
+    ONE_patient_in_cluster <- length(unique(cluster[!cluster %in% id_hcw])) == 1
     ## IF IN DOUBLE ROOM (MUST BE ONLY THE TWO PATIENTS, NOT THE TWO PATIENT + ANOTHER PATIENT)
-    IN_DOUBLE_ROOM_N1 <- identical(unique(cluster[!cluster %in% HCW_interacting_ids]),
+    IN_DOUBLE_ROOM_N1 <- identical(unique(cluster[!cluster %in% id_hcw]),
                                    double_rooms[[1]])
-    IN_DOUBLE_ROOM_N2 <- identical(unique(cluster[!cluster %in% HCW_interacting_ids]),
+    IN_DOUBLE_ROOM_N2 <- identical(unique(cluster[!cluster %in% id_hcw]),
                                    double_rooms[[2]])
     # IF THERE IS MULTIPLE PATIENTS IN THE CLUSTER (AND NOT IN DOUBLE ROOM)
-    MULTIPLE_patients_in_cluster <- length(unique(cluster[!cluster %in% HCW_interacting_ids])) > 1 & !(IN_DOUBLE_ROOM_N1 | IN_DOUBLE_ROOM_N2)
+    MULTIPLE_patients_in_cluster <- length(unique(cluster[!cluster %in% id_hcw])) > 1 & !(IN_DOUBLE_ROOM_N1 | IN_DOUBLE_ROOM_N2)
     
     ##############################
     ## CLUSTER WITHOUT PATIENTS ##
     ##############################
-    ONLY_MEDICAL <-length(unique(cluster[!cluster %in% HCW_interacting_ids])) == 0 &
+    ONLY_MEDICAL <-length(unique(cluster[!cluster %in% id_hcw])) == 0 &
       length(unique(cluster[cluster %in% id_paramedical])) == 0
     
-    ONLY_PARAMEDICAL <- length(unique(cluster[!cluster %in% HCW_interacting_ids])) == 0 &
+    ONLY_PARAMEDICAL <- length(unique(cluster[!cluster %in% id_hcw])) == 0 &
       length(unique(cluster[cluster %in% id_medical])) == 0
     
-    MEDICAL_AND_PARAMEDICAL <- length(unique(cluster[!cluster %in% HCW_interacting_ids])) == 0 &
+    MEDICAL_AND_PARAMEDICAL <- length(unique(cluster[!cluster %in% id_hcw])) == 0 &
       length(unique(cluster[cluster %in% id_medical])) > 0 &
       length(unique(cluster[cluster %in% id_paramedical])) > 0
     
@@ -316,7 +312,7 @@ global_localization <- lapply(1:n_subdivisions, function(t) {
     } else if (IN_DOUBLE_ROOM_N2) {
       cluster_localization <- unique(rooms[rooms$id == double_rooms[[2]][[1]], "id_room"])
     } else if (ONE_patient_in_cluster) {
-      cluster_localization <- rooms[rooms$id == cluster[!cluster %in% HCW_interacting_ids], "id_room"]
+      cluster_localization <- rooms[rooms$id == cluster[!cluster %in% id_hcw], "id_room"]
     } else if (ONLY_PARAMEDICAL){
       cluster_localization <- rooms[rooms$id == "PM-PE", "id_room"] ## ONLY PARAMEDICAL INTERACTING -> NURSING STATION ?
     } else if (ONLY_MEDICAL){
@@ -332,8 +328,8 @@ global_localization <- lapply(1:n_subdivisions, function(t) {
 
     ## MULTIPLE PATIENTS IN THE CLUSTER --> TEMPORARY, FIXED LATER
     if (MULTIPLE_patients_in_cluster) {
-      cluster_possible_localization <- rooms[rooms$id %in% cluster[!cluster %in% HCW_interacting_ids], "id_room"]
-      cluster_info <- data.frame(Cluster = t, Patients = cluster[!cluster %in% HCW_interacting_ids])
+      cluster_possible_localization <- rooms[rooms$id %in% cluster[!cluster %in% id_hcw], "id_room"]
+      cluster_info <- data.frame(Cluster = t, Patients = cluster[!cluster %in% id_hcw])
       cluster_info_list <<- append(cluster_info_list, list(cluster_info))
     }
   })
@@ -354,17 +350,16 @@ id_room_patient <- rooms %>%
   distinct(id_room) %>%
   pull()
 
-test_loc <- do.call(rbind, global_localization)
+loc_df <- do.call(rbind, global_localization)
 
 for (id_j in id_interacting){
-  loc_j <- test_loc %>% filter(id == id_j)
+  loc_j <- loc_df %>% filter(id == id_j)
+  current_loc_j <- loc_j[1]
 }
 
 ```
 
 
-```{r}
-```
 
 
 
@@ -641,7 +636,7 @@ save(clusters,
      rooms,
      global_interaction,
      admission,
-     HCW_interacting_ids,
+     id_hcw,
      n_subdivisions,
      begin_date,
      end_date,
@@ -655,20 +650,6 @@ save(clusters,
 ```{r Time spent in Restroom/Corridor by HCW cat}
 #load(file.path(loc_nodscov2_path,"dev-localization-nodscov2.RData")) ##overwrite admission
 
-id_interacting <- do.call(rbind,global_interaction) %>%
-  pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>%
-  distinct(individual) %>%
-  pull()
-id_total <- admission %>% distinct(id) %>% pull()
-id_not_interacting <- setdiff(id_total, id_interacting)
-
-
-HCW_interacting_ids <- admission %>% filter(status == "PE") %>% filter(id %in% id_interacting) %>% pull(id)
-cat_paramedical <- c("nurse", "student nurse", "aux nurse", "other")
-cat_medical <- c("physician", "ext physician", "reeducation staff")
-id_paramedical <- admission %>% filter(id %in% HCW_interacting_ids & cat %in% cat_paramedical) %>% pull(id)
-id_medical <- admission %>% filter(id %in% HCW_interacting_ids & cat %in% cat_medical) %>% pull(id)
-id_patient <- admission %>% filter(status == "PA") %>% filter(id %in% id_interacting) %>% pull(id)
 
 test_loc <- do.call(rbind, global_localization) %>%
   filter(localization %in% c(19,20,21,22,23,24)) %>%

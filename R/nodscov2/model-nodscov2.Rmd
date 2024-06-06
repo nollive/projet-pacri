@@ -30,10 +30,10 @@ if (!dir.exists(sim_nodscov2_path)) {
 ```{r}
 #load("Y:/ogaufres/pacri-non-sync/data/data-nodscov2/admission_ctc_nodscov2.RData")
 #load("Y:/ogaufres/pacri-non-sync/data/data-nodscov2/list_ward.RData")
-#load(file.path(loc_nodscov2_path,"localization-nodscov2.RData")) ##overwrite admission
+load(file.path(loc_nodscov2_path,"localization-nodscov2.RData")) ##overwrite admission
 
 ##dev
-load(file.path(loc_nodscov2_path,"dev-localization-nodscov2.RData")) ##overwrite admission
+#load(file.path(loc_nodscov2_path,"dev-localization-nodscov2.RData")) ##overwrite admission
 ```
 
 ## ADMISSION

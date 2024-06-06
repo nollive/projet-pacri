@@ -672,7 +672,7 @@ test_loc %>% filter(room == "Corridor") %>%
 
 ## TEMPORARY
 ```{r}
-ind_restroom <- test_loc %>% filter(sum_room > 15*3600) %>% pull(id)
+ind_restroom <- test_loc %>% filter(sum_room > 10*3600) %>% pull(id)
 
 summarise_int_restroom <- data %>%
   filter(from %in% ind_restroom | to %in% ind_restroom ) %>%
@@ -694,111 +694,6 @@ int_restroom <- data %>%
 
 
 <!-- ################################# GARBAGE ############################## -->
-
-## localization INFERENCE - inferred ADMISSIONS & HCW NOT PRESENT DURING THE WHOLE STUDY - TEMPORARY (assign first_time and last_time for individual --> TO KNOW WHEN THEY LEAVE)
-```{r}
-HCW_ids <- admission$id[admission$status == "PE"]
-data_tot <- do.call(rbind,global_interaction)
-
-## FOR PE-PA INTERACTIONS
-a <- data_tot %>%
-  filter(!(from_status == "PA" & to_status == "PA") & !(from_status == "PE" & to_status == "PE")) %>%
-  mutate(id = ifelse(from_status == "PE", from, to)) %>% ## we want HCW ids
-  group_by(id) %>%
-  mutate(first_time = min(time), last_time = max(time)) %>%
-  ungroup() %>%
-  distinct(id, .keep_all = T) %>%
-  filter(id %in% HCW_ids) %>%
-  select(id, first_time, last_time)
-
-
-## FOR PE-PE INTERACTIONS | FROM ids
-b <- data_tot %>%
-  filter(from_status == "PE" & to_status == "PE") %>%
-  mutate(id = from) %>% 
-  group_by(id) %>%
-  mutate(first_time = min(time), last_time = max(time)) %>%
-  ungroup() %>%
-  distinct(id, .keep_all = T) %>%
-  filter(id %in% HCW_ids) %>%
-  select(id, first_time, last_time)
-
-
-## FOR PE-PE INTERACTIONS | TO ids
-c <- data_tot %>%
-  filter(from_status == "PE" & to_status == "PE") %>%
-  mutate(id = to) %>% 
-  group_by(id) %>%
-  mutate(first_time = min(time), last_time = max(time)) %>%
-  ungroup() %>%
-  distinct(id, .keep_all = T) %>%
-  filter(id %in% HCW_ids) %>%
-  select(id, first_time, last_time)
-
-## BIND DFs
-inferred_admission <- bind_rows(a, b, c) %>%
-  group_by(id) %>%
-  summarise(
-    first_time = min(first_time),
-    last_time = max(last_time)
-    ) %>%
-  ungroup()
-
-print(inferred_admission)
-
-rm(a)
-rm(b)
-rm(c)
-rm(data_tot)
-
-
-## THERE IS HCWs THAT ARE NOT PRESENT DURING THE STUDY --> WE CAN EXCLUDE THEM FROM THE localization INFERENCE MODEL
-HCW_interacting_ids <- inferred_admission %>% pull(id)
-length(HCW_interacting_ids)
-HCW_not_here <- setdiff(HCW_ids, HCW_interacting_ids)
-# data_tot %>% filter(from %in% HCW_not_here | to %in% HCW_not_here) 
-
-
-## WE EXCLUDE THE HCWs NOT PRESENT DURING THE STUDY
-# WE USE list_HCW_interacting INSTEAD OF HCW_ids
-```
-
-## INTERACTION localization
-```{r}
-## "NAIVE" INDIVIDUAL LOCATION
-test_global_interaction <- lapply(global_interaction, function(df) {
-  df <- df %>% mutate(localization = NA)
-  
-  # Join df with rooms based on df$from/to and rooms$id
-  df <- df %>%
-    left_join(rooms, by = c("from" = "id")) %>%  ## .x join
-    left_join(rooms, by = c("to" = "id")) %>% ## .y join
-    mutate(localization = case_when(
-      from %in% c("001-0038-B-S", "001-0039-B-F") | to %in% c("001-0038-B-S", "001-0039-B-F") ~ rooms[rooms$id == "001-0038-B-S", "id_room"],
-      from %in% c("001-0127-B-A", "001-0128-Z-K") | to %in% c("001-0127-B-A", "001-0128-Z-K") ~ rooms[rooms$id == "001-0127-B-A", "id_room"],
-      from_status == "PE" & to_status == "PE" ~ rooms[rooms$id == "PE" , "id_room"],
-      from_status == "PA" & to_status == "PE" ~ id_room.x,
-      from_status == "PE" & to_status == "PA" ~ id_room.y,
-    )) %>%
-    select(-room.x, -id_room.x, -room.y, -id_room.y)
-  
-  ## Remove duplicated interactions (there is sometimes interactions recorded multiple times)
-  df <- unique(df)
-  
-  return(df)
-})
-
-#### WE CAN UPDATE THIS localization MODEL TO USE:
-## THE PREVIOUS INT OF INDIVIDUALS
-## IF THERE IS ONLY 2 individuals interactings --> Corridor
-## IF THERE IS MORE THAN TWO PATIENTS --> Corridor ? (c.f. overlap section )
-## etc etc
-
-
-#data_tot <- do.call(rbind, global_interaction)
-```
-
-
 
 ## OVERLAP
 ```{r}

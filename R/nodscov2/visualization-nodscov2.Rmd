@@ -188,7 +188,7 @@ cat_medical <- c("physician", "ext physician", "reeducation staff")
 id_paramedical <- admission %>% filter(id %in% HCW_interacting_ids & cat %in% cat_paramedical) %>% pull(id)
 id_medical <- admission %>% filter(id %in% HCW_interacting_ids & cat %in% cat_medical) %>% pull(id)
 id_patient <- admission %>% filter(status == "PA") %>% filter(id %in% id_interacting) %>% pull(id)
-
+id_index <- status_sim %>% filter(inf_by == "INDEX") %>% pull(id)
 
 ## linelist object
 linelist <- left_join(admission_sim %>% filter(id %in% id_interacting), status_sim, by = join_by(id))
