@@ -14,9 +14,11 @@ library(readxl)
 ```{r}
 wd <- getwd()
 knitr::opts_chunk$set(root.dir = wd)
-observed_path <- file.path(wd,"..", "..", "data", "data-observed")
-simplified_path <- file.path(wd,"..", "..", "data", "data-simplified")
-synthetic_path <- file.path(wd, "..", "..", "data", "data-synthetic")
+data_ibird_path <-  file.path(wd,"..", "..", "data","data-i-bird")
+observed_path <- file.path(data_ibird_path, "data-observed")
+simplified_path <- file.path(data_ibird_path,"data-simplified")
+synthetic_path <- file.path(data_ibird_path, "data-synthetic")
+expanded_path <- file.path(data_ibird_path, "data-expanded")
 
 ## xlsx files
 cat_groupings <- read_excel(path = file.path(observed_path,"cat_groupings.xlsx"), col_names= TRUE)

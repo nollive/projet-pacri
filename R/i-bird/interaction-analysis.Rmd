@@ -17,10 +17,11 @@ library(ggplot2)
 ```{r}
 wd <- getwd()
 knitr::opts_chunk$set(root.dir = wd)
-observed_path <- file.path(wd,"..", "..", "data","data-observed")
-synthetic_path <- file.path(wd, "..", "..", "data", "data-synthetic-graphs")
-simplified_path <- file.path(wd, "..", "..", "data", "data-simplified")
-expanded_path <- file.path(wd,"..", "..", "data","data-expanded")
+data_ibird_path <-  file.path(wd,"..", "..", "data","data-i-bird")
+observed_path <- file.path(data_ibird_path, "data-observed")
+simplified_path <- file.path(data_ibird_path,"data-simplified")
+synthetic_path <- file.path(data_ibird_path, "data-synthetic")
+expanded_path <- file.path(data_ibird_path, "data-expanded")
 ```
 
 ## Graph build

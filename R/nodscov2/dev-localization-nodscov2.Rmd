@@ -354,7 +354,7 @@ loc_df <- do.call(rbind, global_localization)
 
 for (id_j in id_interacting){
   loc_j <- loc_df %>% filter(id == id_j)
-  current_loc_j <- loc_j[1]
+  current_loc_j <- loc_j[1, "localization"]
 }
 
 ```
@@ -637,6 +637,7 @@ save(clusters,
      global_interaction,
      admission,
      id_hcw,
+     id_patient
      n_subdivisions,
      begin_date,
      end_date,
