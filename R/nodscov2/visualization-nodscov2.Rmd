@@ -229,11 +229,13 @@ linelist <- linelist %>%
   mutate(type = ifelse(id %in% id_medical , "MEDICAL", NA)) %>%
   mutate(type = ifelse(id %in% id_paramedical , "PARAMEDICAL", type)) %>%
   mutate(type = ifelse(id %in% id_patient , "PATIENT", type)) %>%
-  mutate(type = ifelse(id == id_index, "INDEX", type)) 
+  mutate(type = ifelse(id == id_index, "INDEX", type)) %>%
+  mutate(info = ifelse(info == 1, "HCW", "PATIENT"))
 
 env_linelist <- data.frame(id = paste0("ENVIRONMENT-",rooms %>% distinct(id_room, .keep_all = TRUE) %>% pull(id_room)),
                            type = "ROOM",
-                           room = rooms %>% distinct(id_room, .keep_all = TRUE) %>% pull(id_room))
+                           room = rooms %>% distinct(id_room, .keep_all = TRUE) %>% pull(id_room),
+                           info = rooms %>% distinct(id_room, .keep_all = TRUE) %>% pull(room))
 
 linelist <- bind_rows(linelist,env_linelist)
 
