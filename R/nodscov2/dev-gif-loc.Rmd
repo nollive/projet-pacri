@@ -23,6 +23,23 @@ loc_nodscov2_path <- file.path(wd, "..", "..", "out", "loc-nodscov2")
 fig_path <- file.path(loc_nodscov2_path,"..","fig")
 ind_paths_path <- file.path(fig_path, "individual-paths")
 
+
+if (!dir.exists(data_path)) {
+  dir.create(data_path, recursive = TRUE)
+}
+if (!dir.exists(nodscov2_path)) {
+  dir.create(nodscov2_path, recursive = TRUE)
+}
+if (!dir.exists(loc_nodscov2_path)) {
+  dir.create(loc_nodscov2_path, recursive = TRUE)
+}
+if (!dir.exists(fig_path)) {
+  dir.create(fig_path, recursive = TRUE)
+}
+if (!dir.exists(ind_paths_path)) {
+  dir.create(ind_paths_path, recursive = TRUE)
+}
+
 ```
 
 ```{r}
