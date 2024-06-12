@@ -11,6 +11,11 @@ library(dplyr)
 library(Rcpp)
 ```
 
+##SETTING SEED
+```{r}
+set.seed(123)
+```
+
 ```{r}
 wd <- getwd()
 knitr::opts_chunk$set(root.dir = wd)
@@ -31,9 +36,6 @@ if (!dir.exists(sim_nodscov2_path)) {
 
 ## NodsCov2 data (not shared)
 ```{r}
-#load("Y:/ogaufres/pacri-non-sync/data/data-nodscov2/admission_ctc_nodscov2.RData")
-#load("Y:/ogaufres/pacri-non-sync/data/data-nodscov2/list_ward.RData")
-##dev
 load(file.path(loc_nodscov2_path,"dev-localization-nodscov2.RData")) ##overwrite admission
 ```
 
@@ -133,51 +135,6 @@ status <- global_status %>% mutate(t_inf = ifelse(id == id_index,
                                    inf_by = ifelse(id == id_index,
                                                    "INDEX",
                                                    inf_by))
-```
-
-## Simulation
-```{r}
-data_sim <- simulation(global_interaction = global_interaction,
-           global_localization = global_localization,
-           global_environment = global_environment,
-           global_lambda = global_lambda,
-           global_status = status,
-           admission = admission_sim,
-           beta = beta,
-           epsilon = epsilon,
-           nu = nu,
-           mu = mu,
-           env_thresold,
-           dt = dt
-           )
-```
-
-#SAVE TO .RData FILES
-```{r}
-id_sim <- ifelse(length(args)==0, "01", args[1])
-id_sim_path <- file.path(sim_nodscov2_path, id_sim)
-
-if (!dir.exists(id_sim_path)) {
-  dir.create(id_sim_path, recursive = TRUE)
-}
-
-save(global_interaction,
-     global_localization,
-     admission,
-     admission_sim,
-     rooms,
-     beta,
-     nu,
-     mu,
-     env_thresold,
-     dt,
-     n_subdivisions,
-     begin_date,
-     end_date,
-     data_sim,
-     clusters,
-     file = file.path(id_sim_path, paste0(id_sim, "-", "dev-simulation-nodscov2.RData"))
-     )
 ```
 
 

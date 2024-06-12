@@ -202,7 +202,6 @@ df_long <- data %>%
   pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>%
   arrange(individual, date_posix_first)
 
-
 calculate_actual_interaction_time <- function(df) {
   if(nrow(df) == 0) return(0)
   
@@ -238,7 +237,6 @@ len_tot <- left_join(len_shifts, len_int, by = join_by(individual))  %>%
 
 
 len_tot %>% filter(total_int > total_shift) 
-
 ```
 
 
@@ -283,14 +281,14 @@ global_localization <- lapply(1:n_subdivisions, function(t) {
     ## CLUSTER WITH PATIENTS ##
     ###########################
     # IF THERE IS ONLY ONE PATIENT IN THE CLUSTER
-    ONE_patient_in_cluster <- length(unique(cluster[!cluster %in% id_hcw])) == 1
+    ONE_PATIENT <- length(unique(cluster[!cluster %in% id_hcw])) == 1
     ## IF IN DOUBLE ROOM (MUST BE ONLY THE TWO PATIENTS, NOT THE TWO PATIENT + ANOTHER PATIENT)
     IN_DOUBLE_ROOM_N1 <- identical(unique(cluster[!cluster %in% id_hcw]),
                                    double_rooms[[1]])
     IN_DOUBLE_ROOM_N2 <- identical(unique(cluster[!cluster %in% id_hcw]),
                                    double_rooms[[2]])
     # IF THERE IS MULTIPLE PATIENTS IN THE CLUSTER (AND NOT IN DOUBLE ROOM)
-    MULTIPLE_patients_in_cluster <- length(unique(cluster[!cluster %in% id_hcw])) > 1 & !(IN_DOUBLE_ROOM_N1 | IN_DOUBLE_ROOM_N2)
+    MULTIPLE_PATIENT <- length(unique(cluster[!cluster %in% id_hcw])) > 1 & !(IN_DOUBLE_ROOM_N1 | IN_DOUBLE_ROOM_N2)
     
     ##############################
     ## CLUSTER WITHOUT PATIENTS ##
@@ -305,16 +303,23 @@ global_localization <- lapply(1:n_subdivisions, function(t) {
       length(unique(cluster[cluster %in% id_medical])) > 0 &
       length(unique(cluster[cluster %in% id_paramedical])) > 0
     
+    #####################
+    ## TIME CONDITIONS ##
+    #####################
+    time_t <- begin_date + (t-1)*30
+    DAY <- between(hour(time_t), 7, 20) 
+    NIGHT <- between(hour(time_t), 21, 24) | between(hour(time_t), 0, 6)
+    
     #################################
     ## Localization OF THE CLUSTER ##
     #################################
-    if (MULTIPLE_patients_in_cluster){
+    if (MULTIPLE_PATIENT){
       cluster_localization <- rooms[rooms$id == "ALL", "id_room"]
     } else if (IN_DOUBLE_ROOM_N1) {
       cluster_localization <- unique(rooms[rooms$id == double_rooms[[1]][[1]], "id_room"])
     } else if (IN_DOUBLE_ROOM_N2) {
       cluster_localization <- unique(rooms[rooms$id == double_rooms[[2]][[1]], "id_room"])
-    } else if (ONE_patient_in_cluster) {
+    } else if (ONE_PATIENT) {
       cluster_localization <- rooms[rooms$id == cluster[!cluster %in% id_hcw], "id_room"]
     } else if (ONLY_PARAMEDICAL){
       cluster_localization <- rooms[rooms$id == "PM-PE", "id_room"] ## ONLY PARAMEDICAL INTERACTING -> NURSING STATION ?
@@ -330,7 +335,7 @@ global_localization <- lapply(1:n_subdivisions, function(t) {
     localization_t$localization <<- ifelse(localization_t$id %in% cluster, cluster_localization, localization_t$localization)
 
     ## MULTIPLE PATIENTS IN THE CLUSTER --> TEMPORARY, FIXED LATER
-    if (MULTIPLE_patients_in_cluster) {
+    if (MULTIPLE_PATIENT) {
       cluster_possible_localization <- rooms[rooms$id %in% cluster[!cluster %in% id_hcw], "id_room"]
       cluster_info <- data.frame(Cluster = t, Patients = cluster[!cluster %in% id_hcw])
       cluster_info_list <<- append(cluster_info_list, list(cluster_info))

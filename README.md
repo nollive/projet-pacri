@@ -37,7 +37,8 @@ The aim of this project is to develop a mathematical model of respiratory pathog
 * igraph (2.0.3)
 * Rcpp (1.0.12)
 * epicontacts (1.1.4)
-
+* gganimate (1.0.9)
+* gifski (1.12.0)
 </details>
 
 <details>
@@ -108,6 +109,7 @@ The project is divided into 4 dependent R scripts:
   * Lambda_e (environmental) and Lambda_c (close-contact) for patients (PA) and healthcare workers (PE) over time
   * Force of Infection (FOI) for patients (PA) and healthcare workers (PE) over time
   * Infection network (thanks to the <a href='https://cran.r-project.org/web/packages/epicontacts/index.html'>epicontacts</a> R package)
+  * Individual's trajectories over time
 
 </details>
 
