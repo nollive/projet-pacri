@@ -39,10 +39,12 @@ if (!dir.exists(loc_nodscov2_path)) {
 
 ```
 
+
 ## NodsCov2 data (not shared)
 ```{r}
 load(file.path(loc_nodscov2_path,"dev-localization-nodscov2.RData")) ##overwrite admission
 ```
+
 
 ## ADMISSION
 ```{r}
@@ -109,7 +111,6 @@ rm(lambda_t)
 
 ## Rcpp
 ```{r}
-#load("~/CNAM-PASTEUR-FIXE/projet-pacri/data-model-nodscov.RData")
 sourceCpp(file.path(cpp_model_path,"dev-model-nodscov2.cpp"))
 ```
 
@@ -128,18 +129,19 @@ env_thresold <- 0
 ## INDEX
 ```{r}
 id_index <- "001-0038-B-S"
-status <- global_status %>% mutate(t_inf = ifelse(id == id_index,
-                                                  as.integer(1),
-                                                  t_inf),
-                                   t_incub = ifelse(id == id_index,
-                                                    as.integer(t_inf + runif(1, min = 2880*1, max = 2880*5)),
-                                                    t_recover),
-                                   t_recover = ifelse(id == id_index,
-                                                      as.integer(t_incub + runif(1, min = 2880*3, max = 2880*7)),
-                                                      t_recover),
-                                   inf_by = ifelse(id == id_index,
-                                                   "INDEX",
-                                                   inf_by))
+status <- global_status %>%
+  mutate(t_inf = ifelse(id == id_index,
+                        as.integer(1),
+                        t_inf),
+         t_incub = ifelse(id == id_index, 
+                          as.integer(t_inf + runif(1, min = 2880*1, max = 2880*5)),
+                          t_recover),
+         t_recover = ifelse(id == id_index,
+                            as.integer(t_incub + runif(1, min = 2880*3, max = 2880*7)),
+                            t_recover),
+         inf_by = ifelse(id == id_index,
+                         "INDEX",
+                         inf_by))
 ```
 
 
@@ -149,8 +151,8 @@ status <- global_status %>% mutate(t_inf = ifelse(id == id_index,
 ```{r}
 end_date - begin_date ##end of last interaction
 ## we take 24h
-new_begin_date <- begin_date + 5*60*60
-new_end_date <- new_begin_date + 24*60*60
+new_begin_date <- begin_date + (5*60*60) ## OFFSET TO START THE DAY AT 12AM
+new_end_date <- new_begin_date + (24*60*60)
 new_end_date - new_begin_date
 t_begin <- 5*60*2
 t_end <- (t_begin + 24*60*2) - 1
