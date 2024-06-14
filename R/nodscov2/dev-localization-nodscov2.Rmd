@@ -91,10 +91,10 @@ n_subdivisions <- floor(as.numeric(time_spent) * 2) ## Time spent * hours * minu
 ## floor because of the manner we extract the interactions (=30sec, i.e. at  the end, interactions are <30sec -> we dont take these)
 
 
-## t = 1 -> [0,30]sec
+## t = 1 -> [0,30[sec
 global_interaction <- lapply(1:n_subdivisions, function(t){
   interactions_t <- data %>%
-    filter(date_posix_first <= (begin_date + (t-1)*30) & (date_posix_first + length >= begin_date + (t)*30) ) %>%
+    filter(date_posix_first <= (begin_date + (t-1)*30) & (date_posix_first + length > begin_date + (t)*30) ) %>%
     mutate(time = t) %>%
     select(from, to, time, from_status, to_status)
   
