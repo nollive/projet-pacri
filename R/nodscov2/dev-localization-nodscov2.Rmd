@@ -251,9 +251,9 @@ id_interacting <- data %>%
 id_total <- admission %>% distinct(id) %>% pull()
 id_not_interacting <- setdiff(id_total, id_interacting)
 
-
-cat_paramedical <- c("nurse", "student nurse", "aux nurse", "other")
-cat_medical <- c("physician", "ext physician", "reeducation staff")
+admission %>% distinct(cat) %>% pull()
+cat_paramedical <- c("nurse", "student nurse", "aux nurse")
+cat_medical <- c("physician", "ext physician", "reeducation staff", "other")
 id_paramedical <- admission %>% filter(id %in% id_interacting & cat %in% cat_paramedical) %>% pull(id)
 id_medical <- admission %>% filter(id %in% id_interacting & cat %in% cat_medical) %>% pull(id)
 id_hcw <- admission %>% filter(id %in% id_interacting & status == "PE") %>% pull(id)
@@ -870,14 +870,11 @@ test_loc %>% filter(room == "Medical Restroom" | room == "Paramedical Restroom")
 
 ## TEMP - Tracking individual
 ```{r}
-paths <- do.call(rbind, global_localization) %>% left_join(rooms %>% distinct(id_room, .keep_all = T) %>% select(id_room,room), by = c("localization" = "id_room")) %>% mutate(room = ifelse(is.na(room), "-1 NOT HERE", room))
-
-test_df <- do.call(rbind, global_interaction) %>%
-  pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>% 
-  select(individual, time, localization)
-
-
-
+paths <- do.call(rbind, global_localization) %>%
+  left_join(rooms %>%
+              distinct(id_room, .keep_all = T) %>%
+              select(id_room,room), by = c("localization" = "id_room")) %>%
+  mutate(room = ifelse(is.na(room), "-1 NOT HERE", room))
 
 
 save_individual_path <- function(ind) {
@@ -891,7 +888,7 @@ save_individual_path <- function(ind) {
     xlab("Time") +  
     ylab("Room") 
     
-  ind_cat <- admission[admission$id == ind, "cat"]
+  ind_cat <- ifelse(!is.na(admission[admission$id == ind, "cat"]), admission[admission$id == ind, "cat"], "patient")
   # filename
   file_name <- file.path(ind_paths_path, paste0(ind,"_", ind_cat, "_fig-traj", ".png"))
   ggsave(file = file_name, plot = p, height = 4, width = 20)
@@ -901,7 +898,7 @@ save_individual_path <- function(ind) {
 map(id_interacting, save_individual_path)
 
 
-do.call(rbind,global_localization) %>% filter(id %in% id_patient) %>% group_by(id,localization) %>% summarise(n = n())
+o <- do.call(rbind,global_localization) %>% filter(id %in% id_patient) %>% group_by(id,localization) %>% summarise(n = n())
 ```
 
 
