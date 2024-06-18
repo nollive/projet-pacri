@@ -6,10 +6,19 @@ library(ggrepel)
 library(tidyr)
 
 
+
 #loc_path <- file.path("dev-localization-nodscov2.RData")
 wd <- getwd()
 loc_path <- file.path(wd, "..", "..", "out", "loc-nodscov2","dev-localization-nodscov2.RData")
 load(loc_path)
+
+
+new_begin_date <- begin_date + (5*60*60) ## OFFSET TO START THE DAY AT 12AM
+new_end_date <- new_begin_date + (24*60*60)
+print(new_end_date - new_begin_date)
+t_begin <- 5*60*2 ## OFFSET t
+t_end <- (t_begin + 24*60*2) - 1
+
 
 distribute_points <- function(n) {
   theta <- seq(0, 2 * pi, length.out = n + 1)[-1]
@@ -44,7 +53,9 @@ rooms_coords <- rooms %>%
   distinct(id_room, .keep_all = TRUE) %>%
   select(localization, x, y)
 
-data <- do.call(rbind, global_localization)
+
+data <- do.call(rbind, global_localization) %>% filter(between(time, t_begin, t_end))
+data <- do.call(rbind, global_localization) %>% filter(time < 150)
 data <- data %>%
   filter(localization != -1) %>%
   left_join(rooms_coords, by = c("localization")) %>%
@@ -96,7 +107,7 @@ p <- ggplot(data, aes(x = x_adj, y = y_adj, color = cat, group = id)) +
   scale_color_discrete(name = "Category") +
   scale_y_continuous(breaks = 1:4, labels = c("Patient room", "Corridor", "Office / Nursing station", "Restroom")) +
   scale_x_continuous(breaks = 1:sum(rooms_coords$y == 1), labels = c(paste0("Chambre ", 1:sum(rooms_coords$y == 1)))) +
-  labs(title = 'Individual position at time : {frame_time}', x = 'Patient room', y = 'Type of room') +
+  labs(title = 'Individual position at time : {new_begin_date + (frame_time * 30)} \n Individual position at time step : {frame_time}', x = 'Patient room', y = 'Type of room') +
   theme_minimal()
 
 animation <- p +
