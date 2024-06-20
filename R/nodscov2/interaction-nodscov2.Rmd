@@ -188,7 +188,7 @@ data_rea %>%
   facet_grid(cols = vars(hospital)) +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 35, hjust = 1)) +
-  labs(title = "Distribution of interaction in Reanimation")
+  labs(title = "Number of interaction over time")
 
 # n distribution / hour
 data_rea %>%
@@ -200,7 +200,7 @@ data_rea %>%
   facet_grid(cols = vars(type_int), rows = vars(hospital)) +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 35, hjust = 1)) +
-  labs(title = "Distribution of Intervals in Reanimation") +
+  labs(title = "Number of interaction over time") +
   labs(x = "Hour of the day", y = "Number of interactions")
 ```
 
@@ -224,7 +224,7 @@ sum_length_cat <- length_cat %>%
 
 # Boxplot & jittered points
 sum_length_cat %>%
-  ggplot( aes(x=cat, y=sum_cat, fill=cat)) +
+  ggplot( aes(x=cat, y=sum_cat/3600, fill=cat)) +
     geom_boxplot() +
     scale_fill_viridis(discrete = TRUE, alpha=0.6) +
     geom_jitter(color="black", size=0.4, alpha=0.9) +
@@ -236,11 +236,11 @@ sum_length_cat %>%
     ) +
     ggtitle("Cumulative time spent interacting with patient by category of HCW") +
     xlab("") +
-    ylab("Cumulative time interacting (s)")
+    ylab("Cumulative time interacting (h)")
 
 # Violin plot
 sum_length_cat %>%
-  ggplot( aes(x=cat, y=sum_cat, fill=cat)) +
+  ggplot( aes(x=cat, y=sum_cat/3600, fill=cat)) +
     geom_violin() +
     scale_fill_viridis(discrete = TRUE, alpha=0.6) +
     geom_jitter(color="black", size=0.4, alpha=0.9) +
@@ -252,7 +252,7 @@ sum_length_cat %>%
     ) +
     ggtitle("Cumulative time spent interacting with patient by category of HCW") +
     xlab("") +
-    ylab("Cumulative time interacting (s)")
+    ylab("Cumulative time interacting (h)")
 
 ```
 
