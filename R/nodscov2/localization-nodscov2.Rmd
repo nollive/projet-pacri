@@ -630,7 +630,7 @@ test_loc %>%
       plot.title = element_text(size=11),
       axis.text.x = element_text(angle = 35, hjust = 1)
     ) +
-    ggtitle("Cumulative time spent in restroom or corridor by category of HCW") +
+    #ggtitle("Cumulative time spent in rooms by category of HCW") +
     xlab("") +
     ylab("Cumulative time interacting (h)")
 
@@ -648,12 +648,12 @@ test_loc %>%
       plot.title = element_text(size=11),
       axis.text.x = element_text(angle = 35, hjust = 1)
     ) +
-    ggtitle("Cumulative time spent in restroom or corridor by category of HCW") +
+    #ggtitle("Cumulative time spent rooms by category of HCW") +
     xlab("") +
     ylab("Cumulative time interacting (h)")
     
 # Violin plot (Restroom)
-test_loc %>% filter(room == "Corridor") %>%
+test_loc %>% filter(room == "Restroom") %>%
   ggplot( aes(x=cat, y=sum_room/3600, fill=cat)) +
     geom_violin() +
     geom_boxplot(width=.1) +
@@ -665,7 +665,7 @@ test_loc %>% filter(room == "Corridor") %>%
       plot.title = element_text(size=11),
       axis.text.x = element_text(angle = 35, hjust = 1)
     ) +
-    ggtitle("Cumulative time spent in Restroom by category of HCW") +
+    #ggtitle("Cumulative time spent in Restroom by category of HCW") +
     xlab("") +
     ylab("Cumulative time interacting (h)")
 ```
