@@ -76,7 +76,7 @@ admission_truncated <- admission %>% filter(id %in% id_interacting)
 ## Vizualisation
 ```{r}
 ## Number of infected over time
-n_individual <- dim(status_sim)[1]
+n_individual <- length(id_interacting)
 counts <- lapply(1:n_subdivisions, function(t) {
   df <- data.frame(status = c("Susceptible", "Exposed ", "Infectious", "Recovered"), count = NA, proportion = NA, time = t)
   

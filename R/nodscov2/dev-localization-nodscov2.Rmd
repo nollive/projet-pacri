@@ -796,10 +796,11 @@ save(clusters,
 
 ## DISTRIBUTION OF TIME SPENT IN RESTROOM/CORRIDOR BY CATEGORY OF HCW
 ```{r Time spent in Restroom/Corridor by HCW cat}
-#load(file.path(loc_nodscov2_path,"dev-localization-nodscov2.RData")) ##overwrite admission
+load(file.path(loc_nodscov2_path,"dev-localization-nodscov2.RData")) ##overwrite admission
 
 
 test_loc <- do.call(rbind, global_localization) %>%
+  filter(between(time, 600, 600+2880)) %>%
   filter(localization %in% c(19,20,21,22,23,24)) %>%
   left_join(admission %>% select(id, cat), by = join_by(id)) %>% 
   left_join(rooms %>% select(id_room, room), by = c("localization" = "id_room")) %>%
@@ -813,6 +814,7 @@ test_loc <- do.call(rbind, global_localization) %>%
     .groups = 'drop'
   )
 
+test_loc$room <- factor(test_loc$room, levels = c("Corridor", "Office", "Nursing station", "Medical Restroom", "Paramedical Restroom"))
 
 # Boxplot & jittered points (Restroom & Corridor)
 test_loc %>%
@@ -827,7 +829,7 @@ test_loc %>%
       plot.title = element_text(size=11),
       axis.text.x = element_text(angle = 35, hjust = 1)
     ) +
-    ggtitle("Cumulative time spent in restroom or corridor by category of HCW") +
+    #ggtitle("Cumulative time spent in restroom or corridor by category of HCW") +
     xlab("") +
     ylab("Cumulative time interacting (h)")
 
@@ -845,7 +847,7 @@ test_loc %>%
       plot.title = element_text(size=11),
       axis.text.x = element_text(angle = 35, hjust = 1)
     ) +
-    ggtitle("Cumulative time spent in restroom or corridor by category of HCW") +
+    #ggtitle("Cumulative time spent in restroom or corridor by category of HCW") +
     xlab("") +
     ylab("Cumulative time interacting (h)")
     
@@ -862,10 +864,31 @@ test_loc %>% filter(room == "Medical Restroom" | room == "Paramedical Restroom")
       plot.title = element_text(size=11),
       axis.text.x = element_text(angle = 35, hjust = 1)
     ) +
-    ggtitle("Cumulative time spent in Restroom by category of HCW") +
+    #ggtitle("Cumulative time spent in Restrooms by category of HCW") +
     xlab("") +
     ylab("Cumulative time interacting (h)")
 ```
+## ORDERED CUMULATIVE TIME SPENT IN ROOMS
+```{r}
+test_loc %>%
+  ggplot( aes(x=type, y=sum_room/3600, fill=type)) +
+    geom_boxplot() +
+    scale_fill_viridis(discrete = TRUE, alpha=0.6) +
+    geom_jitter(color="black", size=0.4, alpha=0.9) +
+    ggh4x::facet_grid2(cols = vars(room), scales = "free_y", independent  ="y") +
+    theme_bw() +
+    theme(
+      legend.position="none",
+      plot.title = element_text(size=11),
+      axis.text.x = element_text(angle = 35, hjust = 1)
+    ) +
+    #ggtitle("Cumulative time spent in restroom or corridor by category of HCW") +
+    xlab("") +
+    ylab("Cumulative time interacting (h)")
+```
+
+
+
 
 
 ## TEMP - Tracking individual
