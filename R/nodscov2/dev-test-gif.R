@@ -55,7 +55,7 @@ rooms_coords <- rooms %>%
 
 
 data <- do.call(rbind, global_localization) %>% filter(between(time, t_begin, t_end))
-data <- do.call(rbind, global_localization) %>% filter(time < 150)
+data <- do.call(rbind, global_localization) %>% filter(time < 50)
 data <- data %>%
   filter(localization != -1) %>%
   left_join(rooms_coords, by = c("localization")) %>%
@@ -107,15 +107,16 @@ p <- ggplot(data %>% filter(time > 10), aes(x = x_adj, y = y_adj, color = cat, g
   scale_color_discrete(name = "Category") +
   scale_y_continuous(breaks = 1:4, labels = c("Patient room", "Corridor", "Office \n Nursing station", "Restroom")) +
   scale_x_continuous(breaks = 1:(sum(rooms_coords$y == 1)+1), labels = c(paste0("Chambre ", 1:(sum(rooms_coords$y == 1)+1)))) +
-  labs(title = 'Individual position at time : {begin_date + (frame_time * 30)} \n Individual position at time step : {frame_time}', x = 'Patient room', y = 'Type of room') +
+  labs(title = 'Individual position at time : {begin_date + (frame_time * 30)}, at time step : {frame_time}', x = 'Patient room', y = 'Type of room') +
   theme_minimal() + 
   theme(
-    plot.title = element_text(size = 20, hjust = 0.5), # 
-    axis.text = element_text(size = 16), 
+    plot.title = element_text(size = 12, hjust = 0.5), # 
+    axis.text = element_text(size = 18), 
     axis.title = element_text(size = 18), 
-    legend.text = element_text(size = 16),
-    legend.title = element_text(size = 18) 
-  )
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 22) 
+  )+
+  coord_cartesian(clip = "off")
 
 #print(p)
 animation <- p +
@@ -127,3 +128,4 @@ nframes <- nrow(data%>%distinct(time))
 fps <- 50
 duration <- nframes / fps
 animate(animation, renderer = gifski_renderer("deplacement.gif"), width = 2000, height = 1333, fps = 50, nframes = nframes, duration = duration)
+
