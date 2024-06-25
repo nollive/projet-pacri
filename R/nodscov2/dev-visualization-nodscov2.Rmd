@@ -136,6 +136,8 @@ SEIR_counts <- function(status_sim, n_subdivisions, n_individual) {
   counts_df <- counts_df %>%
     pivot_longer(cols = c("Susceptible", "Exposed", "Infectious", "Recovered"), names_to = "status", values_to = "count") %>%
     mutate(proportion = count * 100 / n_individual)
+  ## ## S E I R as factor 
+  counts_df$status <- factor(counts_df$status, levels = c("Susceptible", "Exposed", "Infectious", "Recovered"))
   
   return(counts_df)
 }
@@ -199,6 +201,9 @@ max_counts_C_E <- SEIR_max_counts(counts_C_E)
 
 ## SEIR: PLOTS
 ```{r}
+SEIR_colors <- c("Susceptible" = "green", "Exposed" = "pink", "Infectious" = "red", "Recovered" = "blue")
+
+
 plot_SEIR <- function(counts_list, median_counts, min_counts, max_counts, title, fig_path, id_sim) {
   n_sim <- length(counts_list)
   
@@ -208,12 +213,7 @@ plot_SEIR <- function(counts_list, median_counts, min_counts, max_counts, title,
          x = "Time",
          y = "Number of individuals",
          color = "Status") +
-    scale_color_manual(values = c(
-      "Susceptible" = "green",
-      "Exposed" = "pink",
-      "Infectious" = "red",
-      "Recovered" = "blue"
-    )) +
+    scale_color_manual(values = SEIR_colors) +
     theme_bw() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
           plot.title = element_text(size = 16, hjust = 0.5),
@@ -261,12 +261,7 @@ plot_SEIR <- function(counts_list, median_counts, min_counts, max_counts, title,
          x = "Time",
          y = "Proportion of individuals",
          color = "Status") +
-    scale_color_manual(values = c(
-      "Susceptible" = "green",
-      "Exposed" = "pink",
-      "Infectious" = "red",
-      "Recovered" = "blue"
-    )) +
+    scale_color_manual(values = SEIR_colors) +
     theme_bw() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
           plot.title = element_text(size = 16, hjust = 0.5),
