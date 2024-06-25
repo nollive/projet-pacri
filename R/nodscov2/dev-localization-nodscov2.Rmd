@@ -352,7 +352,7 @@ global_localization <- lapply(1:n_subdivisions, function(t) {
 ## checkup
 ```{r}
 test_loc <-  do.call(rbind, global_localization) %>% left_join(rooms %>% select(id_room, room), by = c("localization" = "id_room"))
-View(test_loc %>% filter(id %in% id_hcw) %>% group_by(localization) %>% summarise (n = n()) %>% left_join(rooms %>% select(id_room, room), by = c("localization" = "id_room")))
+checkup <- (test_loc %>% filter(id %in% id_hcw) %>% group_by(localization) %>% summarise (n = n()) %>% left_join(rooms %>% select(id_room, room), by = c("localization" = "id_room")))
 ```
 ## SMOOTHING (SUCCESSIVE INTERACTION IN THE SAME ROOM WITH <5min GAP)
 ```{r}
@@ -707,8 +707,7 @@ for (t in 3:n_subdivisions){
 tb_no_int <- Sys.time()
 print(tb_no_int - ta_no_int)
 
-y <- do.call(rbind,global_localization)
-View(y%>% group_by(localization) %>% summarise (n = n()))
+y <- do.call(rbind,global_localization) %>% group_by(localization) %>% summarise (n = n())
 ```
 
 
@@ -724,7 +723,7 @@ global_localization <- lapply( 1:n_subdivisions, function(t){
 
 ```{r}
 test_loc_ter <- do.call(rbind,global_localization) %>% left_join(rooms %>% select(id_room, room), by = c("localization" = "id_room"))
-View(test_loc_ter %>%filter(id %in% id_hcw) %>% group_by(localization) %>% summarise (n = n()) %>% left_join(rooms %>% select(id_room, room), by = c("localization" = "id_room")))
+checkup_end <- test_loc_ter %>% filter(id %in% id_hcw) %>% group_by(localization) %>% summarise (n = n()) %>% left_join(rooms %>% select(id_room, room), by = c("localization" = "id_room"))
 ```
 
 
@@ -893,7 +892,7 @@ test_loc %>%
 
 ## TEMP - Tracking individual
 ```{r}
-paths <- do.call(rbind, global_localization) %>%
+paths <- do.call(rbind, global_localization) %>% filter(between(time, 600, 600+2880)) %>% ## FILTER TO KEEP ONLY THE 24H OF INTEREST
   left_join(rooms %>%
               distinct(id_room, .keep_all = T) %>%
               select(id_room,room), by = c("localization" = "id_room")) %>%
