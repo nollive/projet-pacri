@@ -109,20 +109,23 @@ p_number_int <- do.call(rbind, global_interaction) %>%
   mutate(type_int = paste0(from_status, "-", to_status)) %>%
   mutate(type_int = ifelse(type_int == "PA-PE", "PE-PA", type_int)) %>%
   filter(type_int != "PA-PA") %>%
-  filter(between(time,600, 600 + 24*60*2)) %>%
+  #filter(between(time,600, 600 + 24*60*2)) %>%
   group_by(time, type_int) %>%
   summarise(n = n()) %>%
   ggplot(aes(x=begin_date + time*30, y=n, color = type_int))+
-    geom_line() +
-    annotate("rect", xmin = as.POSIXct("2020-05-06 22:00:00"), xmax = as.POSIXct("2020-05-07 06:00:00"), ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "grey") +
+    geom_line(linewidth = 0.3) +
+    annotate("rect", xmin = as.POSIXct("2020-05-06 12:00:00"), xmax = as.POSIXct("2020-05-07 12:00:00"), ymin = -Inf, ymax = Inf, alpha = 0.3, fill = "lightgrey") +  
+    annotate("rect", xmin = as.POSIXct("2020-05-06 22:00:00"), xmax = as.POSIXct("2020-05-07 06:00:00"), ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "darkgrey") +
+  
     theme_bw() +
     theme(axis.text.x = element_text(angle = 35, hjust = 1)) +
-    labs(title = "Number of interaction over time") +
-    labs(x = "Time", y = "Number of interactions")
+    labs(title = "Number of interaction over time", x = "Time", y = "Number of interactions", color = "Type of interaction") +
+    scale_color_manual(values = c("PE-PA" = "orange", "PE-PE" = "purple"), 
+                       labels = c("PE-PA" = "Patient - HCW", 
+                                  "PE-PE" = "HCW - HCW"))
 
-
-ggsave(file = file.path(fig_path, paste0("p_number_int", ".png")), plot = p_number_int, height = 10, width = 30)
-  
+print(p_number_int)
+ggsave(file = file.path(fig_path, paste0("p_number_int", ".png")), plot = p_number_int, height = 3, width = 12)
 ```
 
 
@@ -827,9 +830,8 @@ load(file.path(loc_nodscov2_path,"dev-localization-nodscov2.RData")) ##overwrite
 
 test_loc <- do.call(rbind, global_localization) %>%
   filter(between(time, 600, 600+2880)) %>%
-  filter(localization %in% c(19,20,21,22,23,24)) %>%
   left_join(admission %>% select(id, cat), by = join_by(id)) %>% 
-  left_join(rooms %>% select(id_room, room), by = c("localization" = "id_room")) %>%
+  left_join(rooms %>% distinct(id_room, .keep_all = T) %>% select(id_room, room), by = c("localization" = "id_room")) %>%
   mutate(type = ifelse(id %in% id_medical , "MEDICAL", NA)) %>%
   mutate(type = ifelse(id %in% id_paramedical , "PARAMEDICAL", type)) %>%
   mutate(type = ifelse(id %in% id_patient , "PATIENT", type)) %>%
@@ -843,7 +845,7 @@ test_loc <- do.call(rbind, global_localization) %>%
 test_loc$room <- factor(test_loc$room, levels = c("Corridor", "Office", "Nursing station", "Medical Restroom", "Paramedical Restroom"))
 
 # Boxplot & jittered points (Restroom & Corridor)
-test_loc %>%
+test_loc %>% filter(localization %in% c(19,20,21,22,23,24)) %>%
   ggplot( aes(x=type, y=sum_room/3600, fill=type)) +
     geom_boxplot() +
     scale_fill_viridis(discrete = TRUE, alpha=0.6) +
@@ -860,7 +862,7 @@ test_loc %>%
     ylab("Cumulative time (h)")
 
 # Violin plot (Restroom & Corridor)    
-test_loc %>%
+test_loc %>% filter(localization %in% c(19,20,21,22,23,24)) %>%
   ggplot( aes(x=type, y=sum_room/3600, fill=type)) +
     geom_violin() +
     geom_boxplot(width=.1) +
@@ -894,9 +896,26 @@ test_loc %>% filter(room == "Medical Restroom" | room == "Paramedical Restroom")
     xlab("") +
     ylab("Cumulative time (h)")
 ```
+
+
 ## ORDERED CUMULATIVE TIME SPENT IN ROOMS
 ```{r}
-test_loc %>%
+## Cumulative time in patients rooms
+patients_room <- test_loc %>% filter(localization %in% id_room_patient) %>%
+  group_by(id, .drop = "group") %>% 
+  summarise(sum_patient = sum(sum_room)) %>%
+  mutate(sum_room = sum_patient) %>%
+  mutate(room = "Patients Rooms") %>% 
+  left_join(test_loc %>% distinct(id, .keep_all = T) %>% select(id,type), by = join_by("id")) %>%
+  select(id, sum_room, room, type)
+
+other_room <- test_loc %>% filter(!localization %in% id_room_patient) %>% filter(!is.na(room)) %>%
+  select(id, sum_room, room, type)
+
+total_room <- bind_rows(other_room, patients_room)
+total_room$room <- factor(total_room$room, levels = c("Corridor", "Patients Rooms",  "Nursing station", "Office", "Paramedical Restroom", "Medical Restroom"))
+
+p_cumulative_loc <- total_room %>%
   ggplot( aes(x=type, y=sum_room/3600, fill=type)) +
     geom_boxplot() +
     scale_fill_viridis(discrete = TRUE, alpha=0.6) +
@@ -905,12 +924,13 @@ test_loc %>%
     theme_bw() +
     theme(
       legend.position="none",
-      plot.title = element_text(size=11),
+      plot.title = element_text(size=11,hjust = 0.5),
       axis.text.x = element_text(angle = 35, hjust = 1)
     ) +
-    #ggtitle("Cumulative time spent in restroom or corridor by category of HCW") +
-    xlab("") +
-    ylab("Cumulative time interacting (h)")
+    labs(title = "Cumulative time spent in rooms", x = "", y = "Cumulative time (h)")
+
+print(p_cumulative_loc)
+ggsave(file = file.path(fig_path, paste0("cumulative-time-rooms", ".png")), plot = p_cumulative_loc, height = 5, width = 12)
 ```
 
 
