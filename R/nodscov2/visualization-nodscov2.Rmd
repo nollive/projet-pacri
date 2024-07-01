@@ -163,6 +163,28 @@ ggsave(file = file.path(fig_sim_path, paste0(id_sim, "-Viral-Load-NO-ROOMS.png")
 ```
 
 
+## Viral load over time - Each room
+```{r}
+distinct_rooms <- viral_load_over_time %>% distinct(room) %>% pull()
+
+for (id_room in distinct_rooms){
+  VL_room <- ggplot(viral_load_over_time %>% filter(room == id_room), aes(x = time, y = viral_load, color = factor(room))) +
+    geom_line() +
+    labs(title = paste0("Viral Load in Rooms Over Time - ", id_room),
+         x = "Time",
+         y = "Viral Load",
+         color = "Room") +
+    theme_bw() +
+    theme(axis.text.x=element_text(angle=45, hjust=1))
+  print(VL_room)
+  ggsave(file = file.path(fig_sim_path, "Viral-Load", paste0(id_sim, "-Viral-Load-Room-", id_room, ".png")), plot = VL_room, height = 4, width = 20)
+
+}
+```
+
+
+
+
 ## Lambda over time
 ```{r}
 hcw_id <- admission %>% filter(status == "PE") %>% pull(id)
