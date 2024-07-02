@@ -31,18 +31,18 @@ pal = brewer.pal(6, "Set2")
 
 ## Data import (i-Bird)
 ```{r}
-adm_data = read.csv(file.path(wd, "..", "..", "data","data-observed", "toy_admission.csv"), sep=";") %>%
+adm_data = read.csv(file.path(wd, "..", "..", "data", 'data-i-bird', "data-observed", "toy_admission.csv"), sep=";") %>%
   select(id, hospitalization, cat, ward)
 adm_data$cat[adm_data$cat == ""] = adm_data$hospitalization[adm_data$cat == ""]
 adm_data = adm_data[,c(1,3,4)] %>%
   distinct()
-eq_table = openxlsx::read.xlsx(file.path(wd, "..", "..","data","data-observed", "cat_groupings.xlsx")) %>%
+eq_table = openxlsx::read.xlsx(file.path(wd, "..", "..","data", 'data-i-bird',"data-observed", "cat_groupings.xlsx")) %>%
   select(cat, cat_ag)
 adm_data = adm_data %>%
   left_join(eq_table, by = "cat") %>%
   mutate(staff = grepl("PE-", id))
 
-data = read.csv2(file.path(wd, "..", "..","data","data-simplified", "graph_1.csv"))
+data = read.csv2(file.path(wd, "..", "..","data", 'data-i-bird',"data-simplified", "graph_1.csv"))
 ```
 
 ## Data import (NodsCov2)
@@ -50,13 +50,15 @@ data = read.csv2(file.path(wd, "..", "..","data","data-simplified", "graph_1.csv
 load(file.path(wd, "..", "..", "data","data-nodscov2", "admission_ctc_nodscov2.RData"))
 
 adm_data = admission %>%
+  mutate(id = paste0(status, '-', id)) %>%
   select(id, hospitalization, cat, ward)
 adm_data$cat[is.na(adm_data$cat)] = adm_data$hospitalization[is.na(adm_data$cat)]
 adm_data = adm_data[,c(1,3,4)] %>%
   distinct()
 
 
-eq_table = openxlsx::read.xlsx(file.path(wd, "..", "..","data", 'data-i-bird' ,"data-observed", "cat_groupings.xlsx")) %>%
+
+eq_table = openxlsx::read.xlsx(file.path(wd, "..", "..","data", 'data-nodscov2', "cat_groupings_nodscov2.xlsx")) %>%
   select(cat, cat_ag)
 adm_data = adm_data %>%
   left_join(eq_table, by = "cat") %>%
@@ -64,16 +66,33 @@ adm_data = adm_data %>%
 
 load(file.path(wd, "..", "..", "data","data-nodscov2", "list_ward.RData"))
 
+
 data = list_ward[["Raymond_Poincare-Reanimation-20200506-20200507"]] %>% mutate(date_posix = date_posix_first)
+## ADD PA/PE to ids
+data <- left_join(data, admission %>% select(id, status), by = c("from" = "id")) %>%
+  rename(from_status = status) %>%
+  left_join(admission %>% select(id, status), by = c("to" = "id")) %>%
+  rename(to_status = status) %>%
+  mutate(from = paste0(from_status, '-', from), to = paste0(to_status, '-', to)) %>%
+  select(from, to, date_posix, length)
+
 ```
 
 
 
 ```{r}
+##i-Bird dates limits
+begin_limit <- "2009-07-27"
+end_limit <-  "2009-08-24"
+
+##Nodscov2 dates limits
+begin_limit <- "2020-05-06"
+end_limit <- "2020-05-08"
+
 graph_data = data %>%
   mutate(date_posix = as_datetime(date_posix)) %>%
   mutate(date_posix = floor_date(date_posix, "day")) %>%
-  filter(date_posix >= as_date("2009-07-27") & date_posix < as_date("2009-08-24")) %>%
+  filter(date_posix >= as_date(begin_limit) & date_posix < as_date(end_limit)) %>%
   group_by(from, to, date_posix) %>%
   summarise(length = sum(length)) %>%
   ungroup %>%
@@ -141,8 +160,14 @@ pe = ggplot() +
 
 ## Arbitrary date
 ```{r}
-example_date = as_date("2009-07-28")
-example_data = data %>% filter(date_posix == example_date)
+##i Bird Arbitrary date
+arbitrary_date <- "2009-07-28"
+## Nodscov 2 Arbitrary date
+arbitrary_date <- "2020-05-06"
+
+
+example_date = as_date(arbitrary_date)
+example_data = data %>% filter(as_date(date_posix) == example_date) ## was date_posix only --> filters to 0 ??
 ```
 
 ## Full graph
@@ -292,7 +317,7 @@ plot_grid(pa,
           plot_grid(pb,pc,pd,nrow=1, labels = c("b)", "c)", "d)"), hjust = 0),
           pe, rel_heights = c(1,0.7,0.5), ncol = 1, labels = c("a)", "", "e)"), hjust = 0)
 
-ggsave(file.path(wd, "..", "..", "Figures", "fig1.png"), height = 12, width = 10)
-
+#ggsave(file.path(wd, "..", "..", "Figures", "fig1-ibird.png"), height = 12, width = 10)
+ggsave(file.path(wd, "..", "..", "out", "fig1-nodscov2-RP-ICU.png"), height = 12, width = 10)
 ```
 
