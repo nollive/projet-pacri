@@ -120,7 +120,7 @@ n_sim <- 50
 
 
 # ##MANUAL SELECTION BETA
-# beta <- 5
+beta <- 1
 
 ## SAVE
 save(n_sim,
@@ -138,7 +138,7 @@ save(n_sim,
      mu,
      env_threshold,
      dt,
-     file = file.path("parameters-model-beta-5.RData")
+     file = file.path("parameters-model-beta-1.RData")
      )
 
 
