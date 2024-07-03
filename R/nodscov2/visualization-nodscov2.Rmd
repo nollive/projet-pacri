@@ -180,6 +180,31 @@ for (id_room in distinct_rooms){
   ggsave(file = file.path(fig_sim_path, "Viral-Load", paste0(id_sim, "-Viral-Load-Room-", id_room, ".png")), plot = VL_room, height = 4, width = 20)
 
 }
+
+distinct_rooms <- viral_load_over_time %>% distinct(room) %>% pull()
+```
+
+## FOR 1 DAY
+```{r}
+## Arbitrary day -> 2020/05/20
+arbitrary_day <- date('2020-05-20')
+
+for (id_room in distinct_rooms){
+  VL_room <- ggplot(viral_load_over_time %>%
+                      filter(room == id_room) %>%
+                      filter(date(time) == arbitrary_day),
+                    aes(x = time, y = viral_load, color = factor(room))) +
+    geom_line() +
+    labs(title = paste0("Viral Load in Rooms Over Time - ", id_room),
+         x = "Time",
+         y = "Viral Load",
+         color = "Room") +
+    theme_bw() +
+    theme(axis.text.x=element_text(angle=45, hjust=1))
+  print(VL_room)
+  ggsave(file = file.path(fig_sim_path, "Viral-Load-Day", paste0(id_sim, "-Viral-Load-Day-Room-", id_room, ".png")), plot = VL_room, height = 4, width = 20)
+
+}
 ```
 
 
