@@ -947,20 +947,25 @@ paths <- do.call(rbind, global_localization) %>% filter(between(time, 600, 600+2
 
 
 save_individual_path <- function(ind) {
-  p <- ggplot(paths %>% filter(id == ind), aes(x = time * 30 + begin_date, y = room, color = as.factor(id))) +
-    geom_path(aes(group = id)) +  # geom_path -> connected lines
-    geom_point(aes(shape = as.factor(id))) +  # geom_point -> points
-    labs(color = "ID", shape = "ID") +  #legend
-    theme_bw() +  #
-    ggtitle("Individual trajectory over time") +  # title
-    #facet_wrap(~ id) + # 
-    xlab("Time") +  
-    ylab("Room") 
-    
   ind_cat <- ifelse(!is.na(admission[admission$id == ind, "cat"]), admission[admission$id == ind, "cat"], "patient")
+  title <-paste0('Individual trajectory over time - ', ind, ' - ', ind_cat) 
+  p <- ggplot(paths %>% filter(id == ind), aes(x = time * 30 + begin_date, y = room)) +
+    geom_path(aes(group = id)) +  # geom_path -> connected lines
+    geom_point(aes(shape = id)) +  # geom_point -> points
+    labs(title = title, x = "Time", y = "Room") +
+    theme_bw() +
+    theme(
+    plot.title = element_text(size = 25, hjust = 0.5), #
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20),
+    legend.position="none") 
+    
+  
   # filename
   file_name <- file.path(ind_paths_path, paste0(ind,"_", ind_cat, "_fig-traj", ".png"))
-  ggsave(file = file_name, plot = p, height = 4, width = 20)
+  ggsave(file = file_name, plot = p, height = 6, width = 30)
 }
 
 #map -> apply function for each individual
