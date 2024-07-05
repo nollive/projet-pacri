@@ -24,14 +24,14 @@ sensibility_path <- file.path(out_path,'sensibility-analysis')
 
 ## BETA CALCULATED W/ MEAN (c.f. Q. LECLERC ET AL. 2023 PREPRINT)
 # id_sim <- "sim-mean"
-# beta_type <- "mean"
+# beta_type <- "beta-mean"
 
 ## BETA CALCULATED W/ MEDIAN (c.f. Q. LECLERC ET AL. 2023 PREPRINT)
 # id_sim <- "sim-median"
-# beta_type <- "median"
+# beta_type <- "beta-median"
 
 # # BETA MANUALLY SELECTED
-beta <- 1
+beta <- '2.5'
 id_sim <- paste0("sim-beta-",beta)
 beta_type <- paste0("beta-", beta)
 
