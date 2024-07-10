@@ -10,9 +10,8 @@
 // [[Rcpp::export]]
 Rcpp::List simulation(
     Rcpp::List global_interaction,
-    Rcpp::List global_localization,
     Rcpp::List global_environment,
-    Rcpp::List global_lambda,
+    Rcpp::List global_data,
     Rcpp::DataFrame global_status,
     Rcpp::DataFrame admission,
     double beta,
@@ -30,24 +29,28 @@ Rcpp::List simulation(
     Rcpp::DataFrame environment_ti = Get_t(global_environment, 0);
     Rcpp::DataFrame environment_tim1 = Get_t(global_environment, 0);
     
-    Rcpp::IntegerVector status_ti =  Get_status_t(global_status, 0);
+    Rcpp::IntegerVector status_ti;
     Rcpp::IntegerVector status_tim1;
 
     Rcpp::DataFrame interaction_ti;
     Rcpp::DataFrame interaction_tim1;
+
+    Rcpp::IntegerVector localization_ti;
+    Rcpp::IntegerVector localization_tmi;
+
+    Rcpp::CharacterVector ids_ti;
+    Rcpp::IntegerVector info_ti;
     
-    Rcpp::DataFrame lambda_ti;
-    Rcpp::DataFrame lambda_template;
-    lambda_template = Get_t(global_lambda, 0);
-    
-    Rcpp::DataFrame localization_ti = Get_t(global_localization, 0);
-    Rcpp::DataFrame localization_tim1;
-    
+
     ///////////////
     // R's t = 1 //
     ///////////////
+    Rcpp::CharacterVector ids_ti = Get_t(global_data, 0)["id"];
+    Rcpp::IntegerVector info_ti = Get_t(global_data, 0)["info"];
+    Rcpp::IntegerVector localization_ti = Get_t(global_data, 0)["localization_ti"];
+    Rcpp::IntegerVector status_tim1 = Get_status_t(global_status, ids_ti, 0); 
     // Shedding of the index patient
-    environment_ti["env"] = Update_environment(environment_tim1, localization_ti , status_ti, admission, mu, nu, deltat);
+    environment_ti["env"] = Update_environment(ids_ti, info_ti, environment_tim1, localization_ti, status_tim1, mu, nu, deltat, 0);
     global_environment[0] = environment_ti;
     // update status for time t = 1?
     
@@ -56,33 +59,35 @@ Rcpp::List simulation(
     //////////////////////////
     int sim_size = global_interaction.size();
     for (int t = 1; t < sim_size; t++){
+        Rcpp::DataFrame global_data_t = Get_t(global_data, t);
+        Rcpp::CharacterVector ids_ti = global_data_t["id"];
+        Rcpp::IntegerVector info_ti = global_data_t["info"];
+        Rcpp::IntegerVector localization_ti = global_data_t["localization_ti"];
+
         interaction_ti = Get_t(global_interaction, t);
-        localization_tim1 = Get_t(global_localization, t-1);
-        status_tim1 = Get_status_t(global_status, t-1);
+        status_tim1 = Get_status_t(global_status, ids_ti, t-1);
+        status_ti = Get_status_t(global_status, ids_ti, t);
         ////////////////////////////
         // Update the environment //
         ////////////////////////////
         environment_tim1 = Get_t(global_environment, t-1);
         environment_ti = clone(environment_tim1);
-        localization_ti = Get_t(global_localization, t);
-        environment_ti["env"] = Update_environment(environment_ti, localization_ti, status_tim1, admission, mu, nu, deltat);
+        environment_ti["env"] = Update_environment(ids_ti, info_ti, environment_tim1, localization_ti, status_tim1, mu, nu, deltat, 0);
         global_environment[t] = environment_ti;
 
         ///////////////////
         // Update Lambda //
         ///////////////////
-        lambda_ti = clone(lambda_template);
-        lambda_ti["lambda_e"] = Lambda_e(lambda_template, localization_ti, environment_ti, admission, B, env_threshold, deltat);
-        lambda_ti["lambda_c"] = Lambda_c(lambda_template, interaction_ti, status_tim1, beta, deltat);
-        global_lambda[t] = lambda_ti;
-        
+        global_data_t["lambda_e"] = Lambda_e(info_ti, localization_ti, environment_ti, B, env_threshold, deltat);
+        global_data_t["lambda_c"] = Lambda_c(ids_ti, interaction_ti, status_ti, beta, deltat);
+        global_data[t] = global_data_t;
         ///////////////////////
         // Update the status //
         ///////////////////////
-        Rcpp::DataFrame temp = Update_status_bis(global_status, lambda_ti,admission, interaction_ti, localization_ti, t);
+        Rcpp::DataFrame temp = Update_status_bis(global_status, status_tim1, global_data_t["lambda_c"], global_data_t["lambda_e"], info_ti, ids_ti, interaction_ti, localization_ti, t);
         global_status = clone(temp);
     }
 
-    Rcpp::List res = Rcpp::List::create(_["global_status"] = global_status, _["global_lambda"] = global_lambda, _["global_environment"] = global_environment);
+    Rcpp::List res = Rcpp::List::create(_["global_status"] = global_status, _["global_data"] = global_data, _["global_environment"] = global_environment);
     return res;    
 }

@@ -44,13 +44,15 @@ RcppExport int Inf_period_uniform();
     
 
 RcppExport Rcpp::NumericVector Update_environment(
+    const Rcpp::CharacterVector ids_ti,
+    const Rcpp::IntegerVector& info_ti,
     const Rcpp::DataFrame& environment_tim1,
-    const Rcpp::DataFrame& localization_ti,
-    const Rcpp::IntegerVector& status_tim1,
+    const Rcpp::IntegerVector& localization_ti,
     const Rcpp::DataFrame& admission,
     const double& mu,
     const double& nu,
-    const double& deltat
+    const double& deltat,
+    const int& t
 );
 
 
@@ -63,12 +65,11 @@ RcppExport Rcpp::List List_inf_encountered(
     const Rcpp::String& id,
     const Rcpp::DataFrame& interaction_ti,
     const Rcpp::DataFrame& global_status,
-    const Rcpp::DataFrame& admission,
     const int& t
 );
 
 RcppExport Rcpp::NumericVector Lambda_c (
-    const Rcpp::DataFrame& lambda_tim1,
+    const Rcpp::CharacterVector& ids_ti, 
     const Rcpp::DataFrame& interaction_ti,
     const Rcpp::IntegerVector& status_ti,
     const double& beta,
@@ -76,10 +77,9 @@ RcppExport Rcpp::NumericVector Lambda_c (
 );
 
 RcppExport Rcpp::NumericVector Lambda_e (
-    const Rcpp::DataFrame& lambda_tim1,
-    const Rcpp::DataFrame& localization_ti,
+    const Rcpp::IntegerVector& info_ti,
+    const Rcpp::IntegerVector& localization_ti,
     const Rcpp::DataFrame& environment_ti,
-    const Rcpp::DataFrame& admission, 
     const double& B,
     const double& env_threshold,
     const double& deltat
@@ -92,46 +92,41 @@ RcppExport Rcpp::DataFrame Get_t(
 
 RcppExport Rcpp::IntegerVector Get_status_t(
     const Rcpp::DataFrame& global_status,
+    const Rcpp::StringVector& ids,
     const int& t
 );
 
 RcppExport int Get_status_j(
     const Rcpp::String& id,
     const Rcpp::DataFrame& global_status,
-    const Rcpp::DataFrame& admission,
     const int& t
 );
 
 RcppExport Rcpp::String Sample_inf(
     const Rcpp::String& id,
     const Rcpp::List& list_inf_encountered,
-    const Rcpp::DataFrame& admission,
-    const Rcpp::DataFrame& localization_ti,
-    const double& lambda_e_j,
-    const double& lambda_c_j
-);
-
-RcppExport Rcpp::String Sample_inf_bis(
-    const Rcpp::String& id,
-    const Rcpp::List& list_inf_encountered,
-    const Rcpp::DataFrame& admission,
-    const Rcpp::DataFrame& localization_ti,
+    const Rcpp::CharacterVector& ids_ti,
+    const Rcpp::IntegerVector& localization_ti,
     const double& lambda_e_j,
     const double& lambda_c_j
 );
 
 RcppExport Rcpp::DataFrame Update_status_bis(
     const Rcpp::DataFrame& global_status,
-    const Rcpp::DataFrame& lambda_ti,
-    const Rcpp::DataFrame& admission,
+    const Rcpp::IntegerVector& status_tim1,
+    const Rcpp::NumericVector& lambda_c_ti,
+    const Rcpp::NumericVector& lambda_e_ti,
+    const Rcpp::IntegerVector& info_ti,
+    const Rcpp::CharacterVector& ids_ti,
     const Rcpp::DataFrame& interactions_ti,
-    const Rcpp::DataFrame& localization_ti,
+    const Rcpp::IntegerVector& localization_ti,
     const int& t
 );
 
 
 RcppExport int Get_loc_j(
     const Rcpp::String& id,
-    const Rcpp::DataFrame& localization_ti
+    const Rcpp::IntegerVector& localization_ti,
+    const Rcpp::CharacterVector& ids_ti
 ); 
 #endif

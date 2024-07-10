@@ -1,0 +1,55 @@
+---
+title: "dev-test-launch"
+author: "Olivier GAUFRÈS"
+date: "2024-07-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(Rcpp)
+```
+
+
+```{r}
+wd <- getwd()
+knitr::opts_chunk$set(root.dir = wd)
+args = commandArgs(trailingOnly=TRUE)
+```
+
+```{r}
+###### launch_sensibility.R (CLUSTER)
+load(file.path(wd, '..', '..', 'out', 'sensibility-analysis', 'sim-beta-10.0' ,'parameters-model-beta-10.0.RData'))
+cpp_path <- file.path(wd,'..','..','cpp', 'nodscov2', 'dev-model-nodscov2.cpp')
+sourceCpp(cpp_path)
+```
+
+## global_data
+```{r}
+global_data <- lapply(1:length(truncated_localization), function(t){
+  df <- data.frame(id = truncated_localization[[t]]$id,
+                   info = admission_sim$info,
+                   #room = admission_sim$room,
+                   localization_ti = truncated_localization[[t]]$localization,
+                   lambda_c = 0,
+                   lambda_e = 0
+                   )
+  df <- df %>% filter(localization_ti != -1)
+  return(df)
+})
+```
+
+
+
+```{r}
+## CREATE ENDLESS DAY OBJECTS
+test_interaction <- rep(truncated_interaction, n_days)
+test_localization <- rep(truncated_localization, n_days)
+test_lambda <- rep(truncated_lambda, n_days)
+test_environment <- rep(truncated_environment, n_days)
+test_status <- truncated_status
+
+new_n_subdivisions <- (t_end-t_begin +1)*n_days
+```
+

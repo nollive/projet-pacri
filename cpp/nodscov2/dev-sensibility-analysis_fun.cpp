@@ -418,7 +418,8 @@ Rcpp::NumericVector Lambda_c (
         id = ids[j];
         nb_inf_r = 0;
         list_ind_r = List_encountered(id, interaction_ti);
-        if(list_ind_r.size() > 0){
+
+        if(list_ind_r.size() > 0){ // if the individual encounters someome 
             // Dont use List_inf_encountered because we dont need admission for Lambda_c
             for (int i = 0; i < list_ind_r.size(); ++i){
                 Rcpp::String id_r = list_ind_r[i];
@@ -438,7 +439,7 @@ Rcpp::NumericVector Lambda_c (
             
             lambda_c_ti[j] = beta * deltat * nb_inf_r;
 
-        } else {
+        } else { // no interactions
             lambda_c_ti[j] = 0;
         }
         
@@ -482,7 +483,7 @@ Rcpp::NumericVector Lambda_e (
         //     individual_weight = 1;
         // }
         int room_j = Get_loc_j(id_j, localization_ti);
-        if (room_j != -1){
+        if (room_j != -1){ // if individual is here
             // Search for the index of patient's room
             int index_room = -1;
             for (int k = 0; k < rooms_environment.size(); ++k) {
