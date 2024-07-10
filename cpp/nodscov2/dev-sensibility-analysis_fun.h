@@ -111,6 +111,15 @@ RcppExport Rcpp::String Sample_inf(
     const double& lambda_c_j
 );
 
+RcppExport Rcpp::String Sample_inf_bis(
+    const Rcpp::String& id,
+    const Rcpp::List& list_inf_encountered,
+    const Rcpp::DataFrame& admission,
+    const Rcpp::DataFrame& localization_ti,
+    const double& lambda_e_j,
+    const double& lambda_c_j
+);
+
 
 RcppExport Rcpp::DataFrame Update_status_bis(
     const Rcpp::DataFrame& global_status,

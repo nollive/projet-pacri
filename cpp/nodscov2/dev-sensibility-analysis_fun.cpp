@@ -26,7 +26,6 @@ const double scale_inf_g = pow(sd_inf_g, 2) / m_inf_g;
 // R UNIQUE(X) FUNCTION
 Rcpp::Environment base("package:base");
 Function do_unique = base["unique"];
-Function do_sample = base["sample"];
 
 
 //////////////////////////////////////////////
@@ -165,6 +164,62 @@ Rcpp::String Sample_inf(
 
 //////////////////////////////////////////////
 // [[Rcpp::export]]
+Rcpp::String Sample_inf_bis(
+    const Rcpp::String& id,
+    const Rcpp::List& list_inf_encountered,
+    const Rcpp::DataFrame& admission,
+    const Rcpp::DataFrame& localization_ti,
+    const double& lambda_e_j,
+    const double& lambda_c_j
+) {
+    if (list_inf_encountered.size() == 0){ // NO CONTACTS -> ENV
+        int room_j = Get_loc_j(id, localization_ti);
+        Rcpp::String res = "ENVIRONMENT-";
+        res += std::to_string(room_j);
+        return res;
+        
+    } if (lambda_e_j <= 1e-10 && list_inf_encountered.size() > 0){ // NO ENV --> CONTACT
+        // Uniform weights are implicitly used in Rcpp::sample if not provided
+        Rcpp::String sampled = Rcpp::sample(list_inf_encountered, 1, true)[0];
+        Rcpp::String res = "CONTACT-";
+        res += sampled;
+        return res; 
+
+    } else { // CONTACT AND ENV
+        int n_ind = list_inf_encountered.size();
+        double ind_weight = lambda_c_j / (n_ind * (lambda_c_j + lambda_e_j)); // lambda_c !=0 so n_ind!=0
+        double env_weight = lambda_e_j / (lambda_c_j + lambda_e_j);
+        
+        // WEIGHTS VECTOR
+        Rcpp::NumericVector weights(n_ind + 1, ind_weight); // Initialize with ind_weight, CAUTION, R its rep(1,3) but cpp its v(3,1)
+        weights[0] = env_weight;
+        
+        // ELEMENTS VECTOR
+        Rcpp::CharacterVector elements(n_ind + 1);
+        elements[0] = "ENVIRONMENT-";
+        for (int i = 0; i < n_ind; ++i) {
+            Rcpp::String id_patient_i = list_inf_encountered[i];
+            elements[i + 1] = id_patient_i;
+        }
+        // SAMPLE
+        Rcpp::String sampled = Rcpp::sample(elements, 1, true, weights)[0];
+        
+        // RETURN THE CAUSE OF INFECTION
+        if (sampled == "ENVIRONMENT-") {
+            int room_j = Get_loc_j(id, localization_ti);
+            Rcpp::String res = "ENVIRONMENT-";
+            res += std::to_string(room_j);
+            return res;
+        } else {
+            Rcpp::String res = "CONTACT-";
+            res += sampled;
+            return res;
+        }
+    }
+};
+
+//////////////////////////////////////////////
+// [[Rcpp::export]]
 Rcpp::DataFrame Update_status_bis(
     const Rcpp::DataFrame& global_status,
     const Rcpp::DataFrame& lambda_ti,
@@ -211,7 +266,7 @@ Rcpp::DataFrame Update_status_bis(
             Rcpp::List list_inf_encountered = List_inf_encountered(id_j, interactions_ti, global_status, admission, t);
             double lambda_e_j = lambda_e[j];
             double lambda_c_j = lambda_c[j];
-            Rcpp::String sampled_j = Sample_inf(ids[j], list_inf_encountered, admission, localization_ti, lambda_e_j, lambda_c_j);
+            Rcpp::String sampled_j = Sample_inf_bis(ids[j], list_inf_encountered, admission, localization_ti, lambda_e_j, lambda_c_j);
             inf_by_ti[j] = sampled_j;
             }
     };
@@ -257,15 +312,13 @@ Rcpp::NumericVector Update_environment(
     // WARNING: IF THERE IS DOUBLE ROOMS, DONT DO THE DOUBLE EXPONENTIAL INACTIVATION OF E(t-1)
     
     Rcpp::IntegerVector rooms_environment = environment_tim1["id_room"];
-    Rcpp::NumericVector temp_env = environment_tim1["env"];
-    Rcpp::NumericVector env_ti = clone(temp_env);
     Rcpp::CharacterVector ids = admission["id"];
     Rcpp::IntegerVector admission_int = admission["info"];
 
     double individual_weigth;
 
     // EXPONENTIAL INACTIVATION 
-    env_ti = env_ti * exp(-mu * deltat);
+    Rcpp::NumericVector env_ti = as<NumericVector>(environment_tim1["env"]) * exp(-mu * deltat);
     
     // INFECTING INDIVIDUALS SHEDDING
     for (int j = 0; j < admission.nrows(); ++j) {
