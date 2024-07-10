@@ -1,14 +1,15 @@
 ## LIBRARIES
 library(dplyr)
 library(Rcpp)
+library(tidyr)
 
 wd <- getwd()
 ##PATHS
 loc_path <- file.path(wd,"out","loc-nodscov2","dev-localization-nodscov2.RData")
-cpp_path <- file.path(wd,'cpp', 'nodscov2', 'dev-sensibility-analysis.cpp')
+
 ##LOAD DATA & CPP CODE
 load(loc_path) ##overwrite admission
-sourceCpp(cpp_path)
+
 
 ## GLOBAL OBJECTS MODIFICATIONS
 admission_sim <- admission %>%
@@ -176,8 +177,9 @@ save(n_days,
 
 
 ###### launch_sensibility.R (CLUSTER)
-load(file.path("parameters-model-beta-10.RData"))
-
+load(file.path("parameters-model-beta-10.0.RData"))
+cpp_path <- file.path(wd,'cpp', 'nodscov2', 'dev-sensibility-analysis.cpp')
+sourceCpp(cpp_path)
 
 ## CREATE ENDLESS DAY OBJECTS
 test_interaction <- rep(truncated_interaction, n_days)
