@@ -191,57 +191,6 @@ shifts <- df_long %>%
   left_join(admission %>% select(id,cat,status), by = c("individual" = "id")) %>%
   filter(status == "PE")
 
-# ## check which indivuals have > 3 "shifts"
-# sup_3_shifts <- shifts %>% 
-#   group_by(individual) %>% 
-#   summarise(n_shifts = n()) %>% 
-#   filter(n_shifts > 3) %>%
-#   left_join(admission %>% select(id,cat), by = c("individual" = "id")) %>%
-#   select(individual, cat, n_shifts)
-```
-
-## SHIFTS VS INTERACTION
-```{r}
-# df_long <- data %>%
-#   mutate(date_posix_end = date_posix_first + length) %>% 
-#   pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>%
-#   arrange(individual, date_posix_first)
-# 
-# calculate_actual_interaction_time <- function(df) {
-#   if(nrow(df) == 0) return(0)
-#   
-#   df <- df %>% arrange(date_posix_first)
-#   total_time <- 0
-#   current_start <- df$date_posix_first[1]
-#   current_end <- df$date_posix_end[1]
-#   
-#   for(i in 2:nrow(df)) {
-#     if(df$date_posix_first[i] <= current_end) {
-#       current_end <- max(current_end, df$date_posix_end[i])
-#     } else {
-#       total_time <- total_time + as.numeric(difftime(current_end, current_start, units = "hours"))
-#       current_start <- df$date_posix_first[i]
-#       current_end <- df$date_posix_end[i]
-#     }
-#   }
-#   total_time <- total_time + as.numeric(difftime(current_end, current_start, units = "hours"))
-#   return(total_time)
-# }
-# 
-# len_int <- df_long %>%
-#   group_by(individual) %>%
-#   summarise(total_int = calculate_actual_interaction_time(cur_data()))
-# 
-# len_shifts <- shifts %>%
-#   group_by(individual) %>%
-#   summarise(total_shift = sum(shift_length))
-# 
-# len_tot <- left_join(len_shifts, len_int, by = join_by(individual))  %>%
-#   mutate(len_diff = total_shift - total_int) %>%
-#   left_join(admission %>% select(id,cat), by = c("individual" = "id"))
-# 
-# 
-# len_tot %>% filter(total_int > total_shift) 
 ```
 
 
@@ -695,12 +644,14 @@ for (t in 3:n_subdivisions){
 # checkup_end <- test_loc_ter %>% filter(id %in% id_hcw) %>% group_by(localization) %>% summarise (n = n()) %>% left_join(rooms %>% select(id_room, room), by = c("localization" = "id_room"))
 ```
 
+
 #SAVE TO .RData FILES
 ```{r Save to .RData}
 save(clusters,
      global_localization,
      global_interaction,
      admission,
+     admission_sim,
      rooms,
      shifts,
      id_hcw,
@@ -849,6 +800,59 @@ print(double_rooms)
 
 <!-- ################################# GARBAGE ############################## -->
 
+```{r}
+# ## check which indivuals have > 3 "shifts"
+# sup_3_shifts <- shifts %>% 
+#   group_by(individual) %>% 
+#   summarise(n_shifts = n()) %>% 
+#   filter(n_shifts > 3) %>%
+#   left_join(admission %>% select(id,cat), by = c("individual" = "id")) %>%
+#   select(individual, cat, n_shifts)
+```
+
+## SHIFTS VS INTERACTION
+```{r}
+# df_long <- data %>%
+#   mutate(date_posix_end = date_posix_first + length) %>% 
+#   pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>%
+#   arrange(individual, date_posix_first)
+# 
+# calculate_actual_interaction_time <- function(df) {
+#   if(nrow(df) == 0) return(0)
+#   
+#   df <- df %>% arrange(date_posix_first)
+#   total_time <- 0
+#   current_start <- df$date_posix_first[1]
+#   current_end <- df$date_posix_end[1]
+#   
+#   for(i in 2:nrow(df)) {
+#     if(df$date_posix_first[i] <= current_end) {
+#       current_end <- max(current_end, df$date_posix_end[i])
+#     } else {
+#       total_time <- total_time + as.numeric(difftime(current_end, current_start, units = "hours"))
+#       current_start <- df$date_posix_first[i]
+#       current_end <- df$date_posix_end[i]
+#     }
+#   }
+#   total_time <- total_time + as.numeric(difftime(current_end, current_start, units = "hours"))
+#   return(total_time)
+# }
+# 
+# len_int <- df_long %>%
+#   group_by(individual) %>%
+#   summarise(total_int = calculate_actual_interaction_time(cur_data()))
+# 
+# len_shifts <- shifts %>%
+#   group_by(individual) %>%
+#   summarise(total_shift = sum(shift_length))
+# 
+# len_tot <- left_join(len_shifts, len_int, by = join_by(individual))  %>%
+#   mutate(len_diff = total_shift - total_int) %>%
+#   left_join(admission %>% select(id,cat), by = c("individual" = "id"))
+# 
+# 
+# len_tot %>% filter(total_int > total_shift) 
+```
 
 
 
