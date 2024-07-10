@@ -46,8 +46,10 @@ load(file.path(loc_nodscov2_path,"dev-localization-nodscov2.RData")) ##overwrite
 ```
 
 
-## ADMISSION
 ```{r}
+###################
+## ADMISSION_SIM ##
+###################
 admission_sim <- admission %>%
   mutate(info = ifelse(status == "PE", 1,0)) %>%
   select(id,info) %>%
@@ -57,25 +59,29 @@ admission_sim <- admission %>%
   select(id,info,room)
 admission_sim$info <- as.integer(admission_sim$info)
 admission_sim$room <- as.integer(admission_sim$room)
-```
 
-## ROOMS
-```{r}
+
+###########
+## ROOMS ##
+###########
 #head(rooms)
-```
 
-## INTERACTIONS
-```{r}
+
+########################
+## GLOBAL_INTERACTION ##
+########################
 #head(global_interaction)
-```
 
-## LOCALIZATIONS
-```{r}
+
+#########################
+## GLOBAL_LOCALIZATION ##
+#########################
 #head(global_localization)
-```
 
-## ENVIRONMENT
-```{r}
+
+########################
+## GLOBAL_ENVIRONMENT ##
+########################
 env_t <- rooms %>%
   distinct(room) %>%
   mutate(env = 0) %>%
@@ -87,17 +93,12 @@ env_t$id_room <- as.integer(env_t$id_room)
 global_environment <- lapply(1:n_subdivisions, function(t){
   return (env_t)
 })
-
 rm(env_t)
-```
 
-## STATUS
-```{r}
-global_status = data.frame(id = admission$id, t_inf = as.integer(-1), t_incub = as.integer(-1), t_recover = as.integer(-1), inf_by = "", inf_room = as.integer(-1))
-```
 
-## LAMBDA
-```{r}
+###################
+## GLOBAL_LAMBDA ##
+###################
 lambda_t <- admission %>%
   distinct(id) %>%
   mutate(lambda_c = 0, lambda_e = 0)
@@ -105,11 +106,16 @@ global_lambda <- lapply(1:n_subdivisions, function(t){
   return(lambda_t)
 })
 rm(lambda_t)
+
+
+###################
+## GLOBAL_STATUS ##
+###################
+global_status <- data.frame(id = admission$id, t_inf = as.integer(-1), t_incub = as.integer(-1), t_recover = as.integer(-1), inf_by = "", inf_room = as.integer(-1))
 ```
 
 
 ### SIMULATION
-
 ## Rcpp
 ```{r}
 sourceCpp(file.path(cpp_model_path,"dev-model-nodscov2.cpp"))
