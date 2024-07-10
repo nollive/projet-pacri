@@ -471,7 +471,7 @@ Rcpp::NumericVector Lambda_e (
     double individual_weight = 1;
     for (int j = 0; j < lambda_tim1.nrows(); ++j){
         Rcpp::String id_j = ids_lambda[j];
-        // TWO CASES (PATIENTS AND HCWS)
+        // // TWO CASES (PATIENTS AND HCWS)
         // if (admission_int[j] == 0){
         //     // CASE 1. IF INDIVIDUAL j IS A PATIENT --> 
         //     individual_weight = 1;
@@ -482,20 +482,25 @@ Rcpp::NumericVector Lambda_e (
         //     individual_weight = 1;
         // }
         int room_j = Get_loc_j(id_j, localization_ti);
-        // Search for the index of patient's room
-        int index_room = -1;
-        for (int k = 0; k < rooms_environment.size(); ++k) {
-            if (rooms_environment[k] == room_j) {
-                index_room = k;
-                break;
+        if (room_j != -1){
+            // Search for the index of patient's room
+            int index_room = -1;
+            for (int k = 0; k < rooms_environment.size(); ++k) {
+                if (rooms_environment[k] == room_j) {
+                    index_room = k;
+                    break;
+                }
             }
-        }
-        // VIRAL LOAD threshold
-        if (environment[index_room] > env_threshold){
-            lambda_e_ti[j] = individual_weight * (B/rooms_volume[index_room]) * deltat * environment[index_room];
-        } else{
+            // VIRAL LOAD threshold
+            if (environment[index_room] > env_threshold){
+                lambda_e_ti[j] = individual_weight * (B/rooms_volume[index_room]) * deltat * environment[index_room];
+            } else{
+                lambda_e_ti[j] = 0;
+            }
+            
+        } else {
             lambda_e_ti[j] = 0;
-        }
+        }    
     }
 
   return lambda_e_ti;
