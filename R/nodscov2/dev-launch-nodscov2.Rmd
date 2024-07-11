@@ -117,8 +117,8 @@ list_inf_encountered <- List_inf_encountered(
 )
 
 lambda_c <- Lambda_c(
-  ids_ti = test_data[[t]]$id,
-  interaction_ti = test_interaction[[t]],
+  ids_ti = test_data[[100000]]$id,
+  interaction_ti = test_interaction[[100000]],
   status_ti = status_ti,
   beta = beta,
   deltat = deltat
@@ -171,6 +171,8 @@ tb <- Sys.time()
 print(tb - ta)
 
 ```
+
+
 ```{r}
 id_sim <- ifelse(length(args)==0, "dev-test-endless-day", args[1])
 id_sim_path <- file.path(sim_nodscov2_path, id_sim)
