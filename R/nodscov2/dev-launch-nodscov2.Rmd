@@ -28,7 +28,7 @@ sourceCpp(cpp_path)
 
 ## global_data
 ```{r}
-global_data <- lapply(1:length(truncated_localization), function(t){
+truncated_data <- lapply(1:length(truncated_localization), function(t){
   df <- data.frame(id = truncated_localization[[t]]$id,
                    info = admission_sim$info,
                    #room = admission_sim$room,
@@ -47,7 +47,7 @@ global_data <- lapply(1:length(truncated_localization), function(t){
 ```{r}
 ## CREATE ENDLESS DAY OBJECTS
 test_interaction <- rep(truncated_interaction, n_days)
-test_data <- rep(global_data, n_days)
+test_data <- rep(truncated_data, n_days)
 test_environment <- rep(truncated_environment, n_days)
 test_status <- truncated_status
 new_n_subdivisions <- (t_end-t_begin +1)*n_days
