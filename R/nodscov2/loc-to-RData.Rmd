@@ -163,13 +163,16 @@ for (beta in seq(from = 0.5, to = 10, by = 0.5)){
 
 ## MEDIAN BETA
 ```{r}
-p_median <- median(c(p_PA_PA,p_PA_PE,p_PE_PA,p_PE_PE))
-beta<- (-log(1-p_median))*(86400/30) ##SEC IN A DAY/30 SEC (30sec time-step)
-
-parameters_path <- file.path(sensibility_path, paste0('sim-beta-', 'median'))
+beta <- 'median'
+parameters_path <- file.path(sensibility_path, paste0('sim-beta-', beta))
 if (!dir.exists(parameters_path)) {
   dir.create(parameters_path, recursive = TRUE)
 }
+
+p_median <- median(c(p_PA_PA,p_PA_PE,p_PE_PA,p_PE_PE))
+beta<- (-log(1-p_median))*(86400/30) ##SEC IN A DAY/30 SEC (30sec time-step)
+
+
 
 save(n_days,
      truncated_interaction,
@@ -192,14 +195,14 @@ save(n_days,
 
 ## BETA MEAN
 ```{r}
-p_mean <- mean(c(p_PA_PA,p_PA_PE,p_PE_PA,p_PE_PE))
-beta <- (-log(1-p_mean))*(86400/30) ##SEC IN A DAY/30 SEC (30sec time-step)
-
-parameters_path <- file.path(sensibility_path, paste0('sim-beta-', 'mean'))
+beta <- 'mean'
+parameters_path <- file.path(sensibility_path, paste0('sim-beta-', beta))
 if (!dir.exists(parameters_path)) {
   dir.create(parameters_path, recursive = TRUE)
 }
 
+p_mean <- mean(c(p_PA_PA,p_PA_PE,p_PE_PA,p_PE_PE))
+beta <- (-log(1-p_mean))*(86400/30) ##SEC IN A DAY/30 SEC (30sec time-step)
 
 save(n_days,
      truncated_interaction,
@@ -222,21 +225,40 @@ save(n_days,
 
 <!-- ###### launch_sensibility.R (CLUSTER) ######  -->
 ```{r}
-load(file.path('parameters-model-beta-10.0.RData'))
-cpp_path <- file.path(wd,'cpp', 'nodscov2', 'dev-sensibility-analysis.cpp')
+###########
+## PATHS ##
+###########
+beta <- 3
+beta <- 'mean'
+beta <- 'median'
+
+wd <- getwd()
+loc_path <- file.path(wd,'..','..', 'out','loc-nodscov2','dev-localization-nodscov2.RData')
+sensibility_path <- file.path(wd,'..','..', 'out', 'sensibility-analysis')
+RData_path <- file.path(sensibility_path, paste0('sim-beta-', beta), paste0('parameters-model-beta-', beta, '.RData'))
+cpp_path <- file.path(wd, '..', '..', 'cpp', 'nodscov2', 'dev-sensibility-analysis.cpp')
+
+####################
+## RDATA AND RCPP ##
+####################
+load(RData_path)
 sourceCpp(cpp_path)
 
-## CREATE ENDLESS DAY OBJECTS
+################################
+## CREATE ENDLESS DAY OBJECTS ##
+################################
 test_interaction <- rep(truncated_interaction, n_days)
-test_localization <- rep(truncated_localization, n_days)
-test_lambda <- rep(truncated_lambda, n_days)
 test_environment <- rep(truncated_environment, n_days)
+test_data <- rep(truncated_data, n_days)
 test_status <- truncated_status
-
 new_n_subdivisions <- (t_end-t_begin +1)*n_days
+```
 
 
-## RANDOM INDEX CASE
+```{r}
+#######################
+## RANDOM INDEX CASE ##
+#######################
 id_index <- sample( x = admission_sim %>% distinct(id) %>% pull(), size = 1)
 # UPDATE STATUs
 test_status <- test_status %>%
@@ -256,8 +278,54 @@ test_status <- test_status %>%
 
 
 
-<!-- ################################# SIMULATION #################################  -->
-##SIMULATION
+<!-- ################################# SIMULATION (LOCAL) #################################  -->
+## SINGLE SIMULATION
+```{r}
+result <- simulation(global_interaction = test_interaction,
+                     global_environment = test_environment,
+                     global_data = test_data,
+                     global_status = test_status,
+                     beta = beta,
+                     B = B,
+                     nu = nu,
+                     mu = mu,
+                     env_threshold = env_threshold,
+                     dt = dt)
+```
+
+```{r}
+args = commandArgs(trailingOnly=TRUE)
+id_sim <- ifelse(length(args)==0, "dev-test-endless-day", args[1])
+id_sim_path <- file.path(sim_nodscov2_path, id_sim)
+
+if (!dir.exists(id_sim_path)) {
+  dir.create(id_sim_path, recursive = TRUE)
+}
+
+
+save(truncated_interaction,
+     truncated_localization,
+     truncated_environment,
+     admission_sim,
+     beta,
+     nu,
+     mu,
+     B,
+     env_threshold,
+     dt,
+     new_n_subdivisions,
+     n_days,
+     t_begin,
+     t_end,
+     result,
+     file = file.path(id_sim_path, paste0(id_sim, "-", "dev-cpp-dev-simulation-nodscov2.RData"))
+     )
+```
+
+
+
+
+## MULTIPLE SIMULATIONS (C/E/C+E)
 ```{r}
 n_sim <- 50
 
@@ -321,6 +389,7 @@ sim_C_E <- replicate(n_sim, {
 save_path <- file.path(wd,'dev-sensibility-analysis.RData')
 save(truncated_interaction,
      truncated_localization,
+     truncated_data,
      admission,
      admission_sim,
      n_sim,
@@ -337,5 +406,23 @@ save(truncated_interaction,
      new_end_date,
      file = save_path
 )
+```
+
+
+
+
+## BENCHMARK
+```{r}
+library(microbenchmark)
+microbenchmark(simulation(global_interaction = test_interaction,
+                     global_environment = test_environment,
+                     global_data = test_data,
+                     global_status = test_status,
+                     beta = beta,
+                     B = B,
+                     nu = nu,
+                     mu = mu,
+                     env_threshold = env_threshold,
+                     dt = dt))
 ```
 
