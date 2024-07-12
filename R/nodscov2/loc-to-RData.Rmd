@@ -414,7 +414,7 @@ save(truncated_interaction,
 ## BENCHMARK
 ```{r}
 library(microbenchmark)
-microbenchmark(simulation(global_interaction = test_interaction,
+a <- microbenchmark(simulation(global_interaction = test_interaction,
                      global_environment = test_environment,
                      global_data = test_data,
                      global_status = test_status,
@@ -423,6 +423,6 @@ microbenchmark(simulation(global_interaction = test_interaction,
                      nu = nu,
                      mu = mu,
                      env_threshold = env_threshold,
-                     dt = dt))
+                     dt = dt), times = 10)
 ```
 
