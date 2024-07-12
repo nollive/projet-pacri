@@ -1,0 +1,80 @@
+---
+title: "pathogens-analysis"
+author: "Olivier GAUFRÈS"
+date: "2024-07-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(tidyr)
+library(visNetwork)
+library(ggborderline)
+```
+
+```{r}
+wd <- getwd()
+knitr::opts_chunk$set(root.dir = wd)
+out_path <- file.path(wd,'..','..','out')
+loc_path <- file.path(out_path, "loc-nodscov2")
+sensibility_path <- file.path(out_path,'sensibility-analysis')
+```
+
+
+```{r}
+###########
+## PATHS ##
+###########
+beta <- 3
+beta <- 'mean'
+beta <- 'median'
+
+wd <- getwd()
+loc_path <- file.path(wd,'..','..', 'out','loc-nodscov2','dev-localization-nodscov2.RData')
+sensibility_path <- file.path(wd,'..','..', 'out', 'sensibility-analysis')
+RData_path <- file.path(sensibility_path, paste0('sim-beta-', beta), paste0('parameters-model-beta-', beta, '.RData'))
+cpp_path <- file.path(wd, '..', '..', 'cpp', 'nodscov2', 'dev-sensibility-analysis.cpp')
+
+####################
+## RDATA AND RCPP ##
+####################
+load(RData_path)
+sourceCpp(cpp_path)
+
+```
+
+
+```{r}
+## PATHOGEN CONTRIBUTION
+contrib_C <- 0.6
+contrib_E <- 0.4
+```
+
+
+```{r}
+##cat
+cat_paramedical <- c("nurse", "student nurse", "aux nurse")
+cat_medical <- c("physician", "ext physician", "reeducation staff", "other")
+## IDS BY CATEGORY
+id_paramedical <- admission_sim %>% pull(id)
+id_medical <- admission_sim %>% pull(id)
+id_hcw <- admission_sim %>% pull(id)
+id_patient <- admission_sim %>% pull(id)
+
+## N
+n_PM <- length(id_paramedical)
+n_M <- length(id_medical)
+n_HCW <- length(id_hcw)
+n_PA <- length(id_patient)
+```
+
+```{r}
+SAR_HCW <- n_inf_HCW / n_HCW
+SAR_PA <- n_inf_PA / n_PA
+SAR_M <- n_inf_M / n_M
+SAR_PM <- n_inf_PM / n_PM
+```
+
