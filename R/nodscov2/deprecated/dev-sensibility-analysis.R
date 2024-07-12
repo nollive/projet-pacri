@@ -6,12 +6,14 @@ library(tidyr)
 wd <- getwd()
 ##PATHS
 loc_path <- file.path(wd,"out","loc-nodscov2","dev-localization-nodscov2.RData")
+##########################
+## LOAD DATA & CPP CODE ##
+##########################
+load(loc_path)
 
-##LOAD DATA & CPP CODE
-load(loc_path) ##overwrite admission
-
-
-## GLOBAL OBJECTS MODIFICATIONS
+##################################
+## GLOBAL OBJECTS MODIFICATIONS ## 
+##################################
 admission_sim <- admission %>%
   mutate(info = ifelse(status == "PE", 1,0)) %>%
   select(id,info) %>%
@@ -19,6 +21,7 @@ admission_sim <- admission %>%
   left_join(rooms, by = c("id_ind" = "id")) %>%
   mutate(room = ifelse(info == 1, rooms[rooms$id == "M-PM", "id_room"], room)) %>%
   select(id,info,room)
+
 admission_sim$info <- as.integer(admission_sim$info)
 admission_sim$room <- as.integer(admission_sim$room)
 
@@ -33,44 +36,9 @@ env_t$id_room <- as.integer(env_t$id_room)
 global_environment <- lapply(1:n_subdivisions, function(t){
   return (env_t)
 })
-
 rm(env_t)
 
 global_status = data.frame(id = admission$id, t_inf = as.integer(-1), t_incub = as.integer(-1), t_recover = as.integer(-1), inf_by = "", inf_room = as.integer(-1))
-
-lambda_t <- admission %>%
-  distinct(id) %>%
-  mutate(lambda_c = 0, lambda_e = 0)
-global_lambda <- lapply(1:n_subdivisions, function(t){
-  return(lambda_t)
-})
-rm(lambda_t)
-
-
-##PARAMETERS
-
-# BETA
-p_PA_PA <- 2.3e-5
-p_PA_PE <- 1.19e-4
-p_PE_PA <- 7.89e-4
-p_PE_PE <- 1.66e-4
-
-#p <- median(c(p_PA_PA,p_PA_PE,p_PE_PA,p_PE_PE))
-p <- mean(c(p_PA_PA,p_PA_PE,p_PE_PA,p_PE_PE))
-beta <- (-log(1-p))*(86400/30)
-
-
-## OTHER PARAMETERS
-B <- 0.48 *24 # Breating rate ( 0.48 m3/h)
-mu_air <- 4 * 24 # Quanta removal (4-6 Air changes/h)
-mu_inac <- (log(2)/1.1) * 24 # Quanta inactivation (computed with viral half life -> 0.63quanta inactivated/h) 
-mu <- mu_air + mu_inac
-nu <- 10 * 24 #( 10 quanta/h)
-dt <- 30 # Time step
-tau <- 60 * 60 *24 # Seconds in 1 day
-deltat <- dt/tau
-env_threshold <- 0 # Quanta threshold above which the environment is infectious
-
 
 ## TRUNCATE TO KEEP ONLY 24H (24/05/06 12:00 TO 24/05/07 12:00)
 end_date - begin_date ##end of last interaction
@@ -84,7 +52,6 @@ t_end <- (t_begin + 24*60*2) - 1
 ## TRUNCATED INFO
 truncated_interaction <- global_interaction[(u <- seq_along(global_interaction)) %in% t_begin:(t_end)]
 truncated_localization <- global_localization[(u <- seq_along(global_localization)) %in% t_begin:(t_end)]
-truncated_lambda <- global_lambda[(u <- seq_along(global_lambda)) %in% t_begin:(t_end)]
 truncated_environment <- global_environment[(u <- seq_along(global_environment)) %in% t_begin:(t_end)]
 truncated_status <- global_status
 
@@ -103,23 +70,54 @@ filter_interacting <- function(list_df, id_interacting) {
   })
 }
 
-truncated_localization <- filter_interacting(truncated_localization, id_interacting )
-truncated_lambda <- filter_interacting(truncated_lambda, id_interacting )
-truncated_status <- truncated_status %>% filter(id %in% id_interacting)
 admission_sim <- admission_sim %>% filter(id %in% id_interacting)
+truncated_localization <- filter_interacting(truncated_localization, id_interacting )
+truncated_status <- truncated_status %>% filter(id %in% id_interacting)
+truncated_data <- lapply(1:length(truncated_localization), function(t){
+  df <- data.frame(id = truncated_localization[[t]]$id,
+                   info = admission_sim$info,
+                   #room = admission_sim$room,
+                   #interacting = ifelse(id %in% truncated_interaction$from | id %in% truncated_interaction$to, T, F)
+                   localization_ti = truncated_localization[[t]]$localization,
+                   lambda_c = 0,
+                   lambda_e = 0
+  )
+  df <- df %>% filter(localization_ti != -1)
+  return(df)
+})
+
+
 
 ## ENDLESS DAY OBJECTS
 n_days <- 7*10
 
+##PARAMETERS
+B <- 0.48 *24 # Breathing rate ( 0.48 m3/h)
+mu_air <- 4 * 24 # Quanta removal (4-6 Air changes/h)
+mu_inac <- (log(2)/1.1) * 24 # Quanta inactivation (computed with viral half life -> 0.63 quanta inactivated/h) 
+mu <- mu_air + mu_inac
+nu <- 10 * 24 # (10 quanta/h)
+dt <- 30 # Time step
+tau <- 60 * 60 *24 # Seconds in 1 day
+deltat <- dt/tau
+env_threshold <- 0 # Quanta threshold above which the environment is infectious
+
+# BETA
+p_PA_PA <- 2.3e-5
+p_PA_PE <- 1.19e-4
+p_PE_PA <- 7.89e-4
+p_PE_PE <- 1.66e-4
+#p <- median(c(p_PA_PA,p_PA_PE,p_PE_PA,p_PE_PE))
+p <- mean(c(p_PA_PA,p_PA_PE,p_PE_PA,p_PE_PE))
+beta <- (-log(1-p))*(86400/30)
 
 
 ## SAVE ALL BETA CONFIGURATIONS
 for (beta in seq(from = 0.5, to = 10, by = 0.5)){
   save(n_days,
        truncated_interaction,
-       truncated_localization,
        truncated_environment,
-       truncated_lambda,
+       truncated_data,
        truncated_status,
        admission_sim,
        beta,
@@ -139,9 +137,8 @@ beta<- (-log(1-p_median))*(86400/30) ##SEC IN A DAY/30 SEC (30sec time-step)
 
 save(n_days,
      truncated_interaction,
-     truncated_localization,
      truncated_environment,
-     truncated_lambda,
+     truncated_data,
      truncated_status,
      admission_sim,
      beta,
@@ -159,9 +156,8 @@ p_mean <- mean(c(p_PA_PA,p_PA_PE,p_PE_PA,p_PE_PE))
 beta <- (-log(1-p_mean))*(86400/30) ##SEC IN A DAY/30 SEC (30sec time-step)
 save(n_days,
      truncated_interaction,
-     truncated_localization,
      truncated_environment,
-     truncated_lambda,
+     truncated_data,
      truncated_status,
      admission_sim,
      beta,

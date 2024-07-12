@@ -21,6 +21,9 @@ set.seed(123)
 
 ```{r}
 ###### launch_sensibility.R (CLUSTER)
+beta <- 1
+beta <-'mean'
+beta 
 load(file.path(wd, '..', '..', 'out', 'sensibility-analysis', 'sim-beta-10.0' ,'parameters-model-beta-10.0.RData'))
 cpp_path <- file.path(wd,'..','..','cpp', 'nodscov2', 'dev-model-nodscov2.cpp')
 sourceCpp(cpp_path)
