@@ -239,7 +239,6 @@ save_individual_path <- function(ind) {
     legend.title = element_text(size = 20),
     legend.position="none") 
     
-  
   # filename
   file_name <- file.path(ind_paths_path, paste0(ind,"_", ind_cat, "_fig-traj", ".png"))
   ggsave(file = file_name, plot = p, height = 6, width = 30)
@@ -248,6 +247,196 @@ save_individual_path <- function(ind) {
 #map -> apply function for each individual
 invisible(map(id_interacting, save_individual_path))
 
+```
 
-o <- do.call(rbind,global_localization) %>% filter(id %in% id_patient) %>% group_by(id,localization) %>% summarise(n = n())
+
+
+<!-- ################################# TEMPORARY - DOUBLE/TRIPLE ROOM INFERENCE ############################## -->
+
+## TEMP: EXTRACTING DOUBLE/TRIPLE ROOMS
+```{r}
+wd <- getwd()
+knitr::opts_chunk$set(root.dir = wd)
+data_path <- file.path(wd,"..", "..", "data")
+nodscov2_path <- file.path(data_path, "data-nodscov2") 
+loc_nodscov2_path <- file.path(wd, "..", "..", "out", "loc-nodscov2")
+fig_path <- file.path(loc_nodscov2_path,"..","fig")
+ind_paths_path <- file.path(fig_path, "individual-paths")
+load(file.path(loc_nodscov2_path,"dev-localization-nodscov2.RData")) ##overwrite admission
+## TRUNCATE TO KEEP ONLY 24H (24/05/06 12:00 TO 24/05/07 12:00)
+end_date - begin_date ##end of last interaction
+new_begin_date <- begin_date + (5*60*60) ## OFFSET TO START THE DAY AT 12AM
+new_end_date <- new_begin_date + (24*60*60)
+print(new_end_date - new_begin_date)
+t_begin <- 5*60*2 ## OFFSET t
+t_end <- (t_begin + 24*60*2) - 1
+
+
+
+
+id_patient <- admission %>% filter(status == 'PA') %>% pull(id)
+## IN RP ICU DURING THE STUDY -> ADDED BEDS, 2 DOUBLE ROOMS and 2 "TRIPLE ROOMS"
+# equivalence id_patient <-> integer
+# will give NA if not a patient -> excluded
+# if < 2 patients -> will be skipped
+name_to_index <- setNames(seq_along(id_patient), id_patient)
+
+update_co_occurrence_matrix <- function(cluster, matrix, name_to_index) {
+  if (length(cluster) > 1) {
+    for (i in 1:(length(cluster) - 1)) {
+      for (j in (i + 1):length(cluster)) {
+        idx_i <- name_to_index[cluster[i]]
+        idx_j <- name_to_index[cluster[j]]
+        matrix[idx_i, idx_j] <- matrix[idx_i, idx_j] + 1
+        matrix[idx_j, idx_i] <- matrix[idx_j, idx_i] + 1
+      }
+    }
+  }
+  return(matrix)
+}
+
+# initialization
+co_occurrence_matrix <- matrix(0, nrow = length(id_patient), ncol = length(id_patient))
+rownames(co_occurrence_matrix) <- id_patient
+colnames(co_occurrence_matrix) <- id_patient
+
+## for each time step -> count
+for (t in clusters[(u <- seq_along(clusters)) %in% t_begin:(t_end)]) {
+  for (cluster in t) {
+    co_occurrence_matrix <- update_co_occurrence_matrix(cluster, co_occurrence_matrix, name_to_index)
+  }
+}
+total_occurrences <- colSums(co_occurrence_matrix)
+
+## Adjacency graph
+graph <- graph.adjacency(co_occurrence_matrix,
+                         weighted=T,
+                         mode="undirected",
+                         diag=FALSE)
+
+plot.igraph(graph,
+            vertex.label=V(graph)$name,
+            #edge.width=log10(E(graph)$weight),
+            edge.label=E(graph)$weight,
+            edge.label.cex=0.8,
+            vertex.size=5,
+            vertex.label.cex=0.8,
+            layout=layout_with_kk) 
+
+tkplot(graph,
+          vertex.label=V(graph)$name,
+            #edge.width=log10(E(graph)$weight),
+            edge.label=E(graph)$weight,
+            edge.label.cex=0.8,
+            vertex.size=5,
+            vertex.label.cex=0.8,
+            layout=layout_with_kk)
+```
+
+
+
+```{r}
+## MATRIX TO DF (filtering to remove duplicates, matrix is symmetrical..., and order it by highest count)
+co_occurrence_df <- as.data.frame(as.table(co_occurrence_matrix))
+co_occurrence_df <- co_occurrence_df[co_occurrence_df$Var1 != co_occurrence_df$Var2, ]
+co_occurrence_df <- co_occurrence_df[!duplicated(t(apply(co_occurrence_df, 1, sort))), ]
+co_occurrence_df <- co_occurrence_df[order(-co_occurrence_df$Freq), ]
+
+
+## function to find double room
+find_double_rooms <- function(df, n_double) {
+  selected_clusters <- character()
+  double_rooms <- list()
+
+  # Select double rooms
+  for (i in 1:n_double) {
+    pair <- df[!df$Var1 %in% selected_clusters & !df$Var2 %in% selected_clusters, ][1, ]
+    if (nrow(pair) > 0) {
+      double_rooms[[i]] <- c(as.character(pair$Var1), as.character(pair$Var2))
+      selected_clusters <- c(selected_clusters, as.character(pair$Var1), as.character(pair$Var2))
+    }
+  }
+
+  return(double_rooms)
+}
+
+double_rooms <- find_double_rooms(co_occurrence_df, n_double = 2)
+print(double_rooms)
+```
+
+
+## TRIPLE ROOMS (NOT WORKING ATM)
+```{r}
+# library(gtools)
+# triplets <- as.data.frame(combinations(n = 18, r = 3, v = id_patient)) %>% mutate(Freq = 0)
+# 
+# ## Freq each triplet in a cluster
+# for (t in clusters) {
+#   for (cluster in t) {
+#     if (length(cluster) > 2){
+#       for (j in 1:nrow(triplets)) {
+#         triplet <- triplets[j, ]
+#         if (all(triplet %in% cluster)) {
+#           triplets[j,]$Freq <- triplets[j,]$Freq + 1
+#         }
+#       }
+#     }
+#   }
+# }
+```
+
+<!-- ################################# GARBAGE ############################## -->
+
+```{r}
+# ## check which indivuals have > 3 "shifts"
+# sup_3_shifts <- shifts %>% 
+#   group_by(individual) %>% 
+#   summarise(n_shifts = n()) %>% 
+#   filter(n_shifts > 3) %>%
+#   left_join(admission %>% select(id,cat), by = c("individual" = "id")) %>%
+#   select(individual, cat, n_shifts)
+```
+
+## SHIFTS VS INTERACTION
+```{r}
+# df_long <- data %>%
+#   mutate(date_posix_end = date_posix_first + length) %>% 
+#   pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>%
+#   arrange(individual, date_posix_first)
+# 
+# calculate_actual_interaction_time <- function(df) {
+#   if(nrow(df) == 0) return(0)
+#   
+#   df <- df %>% arrange(date_posix_first)
+#   total_time <- 0
+#   current_start <- df$date_posix_first[1]
+#   current_end <- df$date_posix_end[1]
+#   
+#   for(i in 2:nrow(df)) {
+#     if(df$date_posix_first[i] <= current_end) {
+#       current_end <- max(current_end, df$date_posix_end[i])
+#     } else {
+#       total_time <- total_time + as.numeric(difftime(current_end, current_start, units = "hours"))
+#       current_start <- df$date_posix_first[i]
+#       current_end <- df$date_posix_end[i]
+#     }
+#   }
+#   total_time <- total_time + as.numeric(difftime(current_end, current_start, units = "hours"))
+#   return(total_time)
+# }
+# 
+# len_int <- df_long %>%
+#   group_by(individual) %>%
+#   summarise(total_int = calculate_actual_interaction_time(cur_data()))
+# 
+# len_shifts <- shifts %>%
+#   group_by(individual) %>%
+#   summarise(total_shift = sum(shift_length))
+# 
+# len_tot <- left_join(len_shifts, len_int, by = join_by(individual))  %>%
+#   mutate(len_diff = total_shift - total_int) %>%
+#   left_join(admission %>% select(id,cat), by = c("individual" = "id"))
+# 
+# 
+# len_tot %>% filter(total_int > total_shift) 
 ```
