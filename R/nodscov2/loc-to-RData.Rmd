@@ -279,9 +279,11 @@ test_status <- test_status %>%
 
 
 <!-- ################################# SIMULATION (LOCAL) #################################  -->
-## SINGLE SIMULATION
+## SINGLE SIMULATION (dev-model)
 ```{r}
-result <- simulation(global_interaction = test_interaction,
+cpp_path <- file.path(wd, '..', '..', 'cpp', 'nodscov2')
+sourceCpp(file.path(cpp_path, 'dev-model-nodscov2.cpp'))
+data_sim <- simulation(global_interaction = test_interaction,
                      global_environment = test_environment,
                      global_data = test_data,
                      global_status = test_status,
@@ -315,10 +317,12 @@ save(truncated_interaction,
      dt,
      new_n_subdivisions,
      n_days,
+     new_begin_date,
+     new_end_date,
      t_begin,
      t_end,
-     result,
-     file = file.path(id_sim_path, paste0(id_sim, "-", "dev-cpp-dev-simulation-nodscov2.RData"))
+     data_sim,
+     file = file.path(id_sim_path, paste0(id_sim, "-", "unique-simulation-nodscov2.RData"))
      )
 ```
 
@@ -328,66 +332,61 @@ save(truncated_interaction,
 ## MULTIPLE SIMULATIONS (C/E/C+E)
 ```{r}
 n_sim <- 1
+sourceCpp(file.path(cpp_path, 'dev-sensibility-analysis.cpp'))
 
 sim_C <- replicate(n_sim, {
   simulation(
     global_interaction = test_interaction,
-    global_localization = test_localization,
     global_environment = test_environment,
-    global_lambda = test_lambda,
+    global_data = test_data,
     global_status = test_status,
-    admission = admission_sim,
     beta = beta,
     B = 0,
     nu = nu,
     mu = mu,
     env_threshold = env_threshold,
-    dt = dt
-  )
+    dt = dt)
 }, simplify = FALSE)
 
 
 sim_E <- replicate(n_sim, {
   simulation(
     global_interaction = test_interaction,
-    global_localization = test_localization,
     global_environment = test_environment,
-    global_lambda = test_lambda,
+    global_data = test_data,
     global_status = test_status,
-    admission = admission_sim,
     beta = 0,
     B = B,
     nu = nu,
     mu = mu,
     env_threshold = env_threshold,
-    dt = dt
-  )
+    dt = dt)
 }, simplify = FALSE)
 
 
 sim_C_E <- replicate(n_sim, {
   simulation(
     global_interaction = test_interaction,
-    global_localization = test_localization,
     global_environment = test_environment,
-    global_lambda = test_lambda,
+    global_data = test_data,
     global_status = test_status,
-    admission = admission_sim,
     beta = beta,
     B = B,
     nu = nu,
     mu = mu,
     env_threshold = env_threshold,
-    dt = dt
-  )
+    dt = dt)
 }, simplify = FALSE)
 ```
 
 
 ##SAVE .RDATA
 ```{r}
-save_path <- file.path(wd,'dev-sensibility-analysis.RData')
-save(truncated_interaction,
+save_path <- file.path(id_sim_path, paste0(id_sim, "-", "multiple-simulation-nodscov2.RData"))
+save(sim_C,
+     sim_E,
+     sim_C_E,
+     truncated_interaction,
      truncated_localization,
      truncated_data,
      admission,

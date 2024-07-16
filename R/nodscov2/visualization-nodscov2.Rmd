@@ -42,10 +42,8 @@ if (!dir.exists(fig_sim_path)) {
   dir.create(fig_sim_path, recursive = TRUE)
 }
 
-#load(file.path(id_sim_path, paste0(id_sim, "-", "simulation-nodscov2.RData")))
-load(file.path(id_sim_path, paste0(id_sim, "-", "dev-simulation-nodscov2.RData")))
-data_sim <- data_sim_test
-rm(data_sim_test)
+
+load(file.path(id_sim_path, paste0(id_sim, "-", "unique-simulation-nodscov2.RData")))
 
 # global_interaction <- rep(truncated_interaction, n_days)
 # global_localization <- rep(truncated_localization, n_days)
@@ -56,18 +54,17 @@ end_date <- new_end_date + days(n_days)
 
 ## REMOVE INDIVUDUALS NOT INTERACTING DURING THE SIMULATION
 ```{r}
-id_interacting <- do.call(rbind,truncated_interaction) %>%
-  pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>%
-  distinct(individual) %>%
-  pull()
-id_total <- admission %>% distinct(id) %>% pull()
-id_not_interacting <- setdiff(id_total, id_interacting)
+id_interacting <- admission_sim %>% distinct(id) %>% pull()
+# id_interacting <- do.call(rbind,truncated_interaction) %>%
+#   pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>%
+#   distinct(individual) %>%
+#   pull()
+# id_total <- admission %>% distinct(id) %>% pull()
+# id_not_interacting <- setdiff(id_total, id_interacting)
+
 ```
 
 ```{r}
-status_sim <- data_sim[["global_status"]] %>% filter(id %in% id_interacting)
-lambda_sim <- lapply(data_sim[["global_lambda"]], function(df)  df %>% filter(id %in% id_interacting))
-admission_truncated <- admission %>% filter(id %in% id_interacting)
 #environment_sim <- data_sim[["global_environment"]] ## might filter it later to remove the rooms of patient not interacting in the truncated data
 ```
 
@@ -77,29 +74,36 @@ admission_truncated <- admission %>% filter(id %in% id_interacting)
 ```{r}
 ## Number of infected over time
 n_individual <- length(id_interacting)
-counts <- lapply(1:n_subdivisions, function(t) {
-  df <- data.frame(status = c("Susceptible", "Exposed", "Infectious", "Recovered"), count = NA, proportion = NA, time = t)
-  
-  df$count[1] <- sum(status_sim$t_inf == -1 | status_sim$t_inf > t)
-  df$count[2] <- sum(status_sim$t_inf <= t & status_sim$t_incub > t)
-  df$count[3] <- sum(status_sim$t_incub <= t & status_sim$t_recover > t)
-  df$count[4] <- sum(status_sim$t_recover <= t & status_sim$t_inf != -1)
-  
-  df$proportion[1] <- df$count[1] * 100 / n_individual
-  df$proportion[2] <- df$count[2] * 100 / n_individual
-  df$proportion[3] <- df$count[3] * 100 / n_individual
-  df$proportion[4] <- df$count[4] * 100 / n_individual
-  
-  return(df)
-})
+n_subdivisions <- new_n_subdivisions
 
-counts_df <- do.call(rbind, counts)
-## S E I R as factor 
-counts_df$status <- factor(counts_df$status, levels = c("Susceptible", "Exposed", "Infectious", "Recovered"))
+## SEIR counts w/ matrix +++ faster than df (before)
+SEIR_counts <- function(status_sim, n_subdivisions, n_individual) {
+  ## Time steps
+  times <- seq(1, n_subdivisions, 1)
+  ##DF
+  counts_df <- data.frame(
+    Susceptible = colSums(outer(status_sim$t_inf, times, function(x, y) x == -1 | x > y)),
+    Exposed = colSums(outer(status_sim$t_inf, times, function(x, y) x <= y) & outer(status_sim$t_incub, times, function(x, y) x > y)),
+    Infectious = colSums(outer(status_sim$t_incub, times, function(x, y) x <= y) & outer(status_sim$t_recover, times, function(x, y) x > y)),
+    Recovered = colSums(outer(status_sim$t_recover, times, function(x, y) x <= y) & outer(status_sim$t_inf, times, function(x, y) x != -1)),
+    time = times
+  )
+  ## Pivot for easier plot
+  counts_df <- counts_df %>%
+    pivot_longer(cols = c("Susceptible", "Exposed", "Infectious", "Recovered"), names_to = "status", values_to = "count") %>%
+    mutate(proportion = count * 100 / n_individual)
+  ## ## S E I R as factor 
+  counts_df$status <- factor(counts_df$status, levels = c("Susceptible", "Exposed", "Infectious", "Recovered"))
+  
+  return(counts_df)
+}
+
+counts_df <- SEIR_counts(status_sim, n_subdivisions, n_individual)
 ```
 
 ## SEIR
 ```{r}
+dir.create(file.path(fig_sim_path, 'SEIR'))
 ## Custom colors
 SEIR_colors <- c("Susceptible" = "green", "Exposed" = "pink", "Infectious" = "red", "Recovered" = "blue")
 
@@ -114,7 +118,7 @@ SEIR_n <- ggplot(counts_df, aes(x = time * 30 + begin_date, y = count, color = f
   theme_bw() +
   theme(axis.text.x=element_text(angle=45, hjust=1))
 print(SEIR_n)
-ggsave(file = file.path(fig_sim_path, paste0(id_sim, "-SEIR-n.png")), plot = SEIR_n, height = 4, width = 20)
+ggsave(file = file.path(fig_sim_path, 'SEIR', paste0(id_sim, "-SEIR-n.png")), plot = SEIR_n, height = 4, width = 20)
 
 SEIR_p <- ggplot(counts_df, aes(x = time * 30 + begin_date, y = proportion, color = factor(status))) +
   geom_line() +
@@ -126,12 +130,16 @@ SEIR_p <- ggplot(counts_df, aes(x = time * 30 + begin_date, y = proportion, colo
   theme_bw() +
   theme(axis.text.x=element_text(angle=45, hjust=1))
 print(SEIR_p)
-ggsave(file = file.path(fig_sim_path, paste0(id_sim, "-SEIR-p.png")), plot = SEIR_p, height = 4, width = 20)
+ggsave(file = file.path(fig_sim_path, 'SEIR', paste0(id_sim, "-SEIR-p.png")), plot = SEIR_p, height = 4, width = 20)
 ```
+
+
 
 
 ## Viral load over time
 ```{r}
+dir.create(file.path(fig_sim_path, 'Viral-Load'))
+
 viral_load_over_time <- do.call(rbind, lapply(1:(length(data_sim[["global_environment"]])%/% 10), function(t) {
   data.frame(time = begin_date + 30 * t*10,
              room = data_sim[["global_environment"]][[t*10]]$room,
@@ -147,7 +155,7 @@ VL_all <- ggplot(viral_load_over_time, aes(x = time, y = viral_load, color = fac
   theme_bw() +
   theme(axis.text.x=element_text(angle=45, hjust=1))
 print(VL_all)
-ggsave(file = file.path(fig_sim_path, paste0(id_sim, "-Viral-Load-ALL.png")), plot = VL_all, height = 4, width = 20)
+ggsave(file = file.path(fig_sim_path, 'Viral-Load', paste0(id_sim, "-Viral-Load-ALL.png")), plot = VL_all, height = 4, width = 20)
 
 
 VL_no_room <- ggplot(viral_load_over_time %>% filter(!room %in% 1:17), aes(x = time, y = viral_load, color = factor(room))) +
@@ -159,7 +167,7 @@ VL_no_room <- ggplot(viral_load_over_time %>% filter(!room %in% 1:17), aes(x = t
   theme_bw() +
   theme(axis.text.x=element_text(angle=45, hjust=1))
 print(VL_no_room)
-ggsave(file = file.path(fig_sim_path, paste0(id_sim, "-Viral-Load-NO-ROOMS.png")), plot = VL_no_room, height = 4, width = 20)
+ggsave(file = file.path(fig_sim_path, 'Viral-Load', paste0(id_sim, "-Viral-Load-NO-ROOMS.png")), plot = VL_no_room, height = 4, width = 20)
 ```
 
 
@@ -186,6 +194,7 @@ distinct_rooms <- viral_load_over_time %>% distinct(room) %>% pull()
 
 ## FOR 1 DAY
 ```{r}
+dir.create(file.path(fig_sim_path, 'Viral-Load-Day'))
 ## Arbitrary day -> 2020/05/20
 arbitrary_day <- date('2020-05-20')
 
@@ -202,7 +211,7 @@ for (id_room in distinct_rooms){
     theme_bw() +
     theme(axis.text.x=element_text(angle=45, hjust=1))
   print(VL_room)
-  ggsave(file = file.path(fig_sim_path, "Viral-Load-Day", paste0(id_sim, "-Viral-Load-Day-Room-", id_room, ".png")), plot = VL_room, height = 4, width = 20)
+  ggsave(file = file.path(fig_sim_path, 'Viral-Load-Day', paste0(id_sim, "-Viral-Load-Day-Room-", id_room, ".png")), plot = VL_room, height = 4, width = 20)
 
 }
 ```
@@ -212,8 +221,9 @@ for (id_room in distinct_rooms){
 
 ## Lambda over time
 ```{r}
+dir.create(file.path(fig_sim_path, 'Lambda'))
 hcw_id <- admission %>% filter(status == "PE") %>% pull(id)
-
+data_sim$global_data[[t]]
 
 FOI_over_time <- do.call(rbind, lapply(1:(length(lambda_sim)%/% 100), function(t) {
   data.frame(time = begin_date + 30 * t*100,
@@ -234,13 +244,14 @@ LAMBDA_p <- ggplot(FOI_over_time, aes(x = time)) +
   theme_bw() + 
   theme(axis.text.x=element_text(angle=45, hjust=1))
 print(LAMBDA_p)
-ggsave(file = file.path(fig_sim_path, paste0(id_sim, "-LAMBDA.png")), plot = LAMBDA_p, height = 4, width = 20)
+ggsave(file = file.path(fig_sim_path, 'Lambda', paste0(id_sim, "-LAMBDA.png")), plot = LAMBDA_p, height = 4, width = 20)
 
 ```
 
 
 ## FOI over time
 ```{r}
+dir.create(file.path(fig_sim_path, 'FOI'))
 FOI_over_time <- FOI_over_time %>% mutate(p_inf = 1 - exp(-lambda_e - lambda_c))
 
 FOI_p <- ggplot(FOI_over_time, aes(x = time)) +
@@ -253,7 +264,7 @@ FOI_p <- ggplot(FOI_over_time, aes(x = time)) +
   theme_bw() +
   theme(axis.text.x=element_text(angle=45, hjust=1))
 print(FOI_p)
-ggsave(file = file.path(fig_sim_path, paste0(id_sim, "-FOI.png")), plot = FOI_p, height = 4, width = 20)
+ggsave(file = file.path(fig_sim_path, 'FOI', paste0(id_sim, "-FOI.png")), plot = FOI_p, height = 4, width = 20)
 
 ```
 
