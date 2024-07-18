@@ -36,7 +36,7 @@ if (!dir.exists(fig_sim_path)) {
 ```{r}
 id_sim <- "dev-test-endless-day"
 id_sim_path <- file.path(sim_nodscov2_path, id_sim)
-fig_sim_path <- file.path(id_sim_path, paste0(id_sim,"-fig"))
+fig_sim_path <- file.path(id_sim_path, 'UNIQUE', paste0(id_sim,"-fig"))
 
 if (!dir.exists(fig_sim_path)) {
   dir.create(fig_sim_path, recursive = TRUE)
@@ -64,17 +64,13 @@ id_interacting <- admission_sim %>% distinct(id) %>% pull()
 
 ```
 
-```{r}
-#environment_sim <- data_sim[["global_environment"]] ## might filter it later to remove the rooms of patient not interacting in the truncated data
-```
-
-
 
 ## Vizualisation
 ```{r}
 ## Number of infected over time
 n_individual <- length(id_interacting)
 n_subdivisions <- new_n_subdivisions
+status_sim <- data_sim$global_status
 
 ## SEIR counts w/ matrix +++ faster than df (before)
 SEIR_counts <- function(status_sim, n_subdivisions, n_individual) {
@@ -98,7 +94,9 @@ SEIR_counts <- function(status_sim, n_subdivisions, n_individual) {
   return(counts_df)
 }
 
-counts_df <- SEIR_counts(status_sim, n_subdivisions, n_individual)
+counts_df <- SEIR_counts(status_sim,
+                         n_subdivisions,
+                         n_individual)
 ```
 
 ## SEIR
@@ -222,15 +220,14 @@ for (id_room in distinct_rooms){
 ## Lambda over time
 ```{r}
 dir.create(file.path(fig_sim_path, 'Lambda'))
-hcw_id <- admission %>% filter(status == "PE") %>% pull(id)
-data_sim$global_data[[t]]
+hcw_id <- admission_sim %>% filter(info == 1) %>% pull(id)
 
-FOI_over_time <- do.call(rbind, lapply(1:(length(lambda_sim)%/% 100), function(t) {
+FOI_over_time <- do.call(rbind, lapply(1:(length(data_sim$global_data)%/% 100), function(t) {
   data.frame(time = begin_date + 30 * t*100,
-             id = lambda_sim[[t*100]]$id,
-             lambda_e = lambda_sim[[t*100]]$lambda_e,
-             lambda_c = lambda_sim[[t*100]]$lambda_c,
-             status = ifelse(lambda_sim[[t*100]]$id %in% hcw_id, "PE", "PA"))
+             id = data_sim$global_data[[t*100]]$id,
+             lambda_e = data_sim$global_data[[t*100]]$lambda_e,
+             lambda_c = data_sim$global_data[[t*100]]$lambda_c,
+             status = ifelse(data_sim$global_data[[t*100]]$id %in% hcw_id, "PE", "PA"))
 }))
 
 LAMBDA_p <- ggplot(FOI_over_time, aes(x = time)) +
@@ -281,8 +278,8 @@ write.csv2(x = list_S, file = file.path(fig_sim_path, paste0(id_sim, "list-susce
 library(epicontacts)
 
 HCW_interacting_ids <- admission %>% filter(status == "PE") %>% filter(id %in% id_interacting) %>% pull(id)
-cat_paramedical <- c("nurse", "student nurse", "aux nurse", "other")
-cat_medical <- c("physician", "ext physician", "reeducation staff")
+cat_paramedical <- c("nurse", "student nurse", "aux nurse")
+cat_medical <- c("physician", "ext physician", "reeducation staff", "other")
 id_paramedical <- admission %>% filter(id %in% HCW_interacting_ids & cat %in% cat_paramedical) %>% pull(id)
 id_medical <- admission %>% filter(id %in% HCW_interacting_ids & cat %in% cat_medical) %>% pull(id)
 id_patient <- admission %>% filter(status == "PA") %>% filter(id %in% id_interacting) %>% pull(id)
