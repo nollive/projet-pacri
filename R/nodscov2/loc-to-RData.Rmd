@@ -308,6 +308,7 @@ if (!dir.exists(id_sim_path)) {
 save(truncated_interaction,
      truncated_localization,
      truncated_environment,
+     admission,
      admission_sim,
      beta,
      nu,
