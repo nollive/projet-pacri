@@ -93,7 +93,7 @@ pal = brewer.pal(4, "Set2")
 pal = c("#5CD6D6B3", "#A9B9E8B3", "#FFA766B3", "#666699B3")
 ## ALPHA = 1 
 pal = c("#5CD6D6", "#A9B9E8", "#FFA766", "#666699")
-
+names(pal) <- c('PARAMEDICAL', 'PATIENT', 'MEDICAL', 'ROOM')
 ## Category groupings
 eq_table = openxlsx::read.xlsx(file.path(wd, "..", "..","data", 'data-nodscov2', "cat_groupings_nodscov2.xlsx")) %>%
   select(cat, cat_ag)
@@ -459,6 +459,6 @@ plot_grid(pa,
           pe, rel_heights = c(1,0.7,0.5), ncol = 1, labels = c("A", "", "E"), hjust = 0)
 
 #ggsave(file.path(wd, "..", "..", "Figures", "fig1-ibird.png"), height = 12, width = 10)
-ggsave(file.path(wd, "..", "..", "out", "fig1-nodscov2-RP-ICU.png"), height = 12, width = 12)
+ggsave(file.path(wd, "..", "..", "out", "fig", "fig1-nodscov2-RP-ICU.png"), height = 12, width = 12)
 ```
 

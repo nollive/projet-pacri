@@ -112,11 +112,12 @@ SEIR_n <- ggplot(counts_df, aes(x = time * 30 + begin_date, y = count, color = f
        x = "Time",
        y = "Number of individuals",
        color = "Status") +
+  labs(title='') +
   scale_color_manual(values = SEIR_colors) +
   theme_bw() +
   theme(axis.text.x=element_text(angle=45, hjust=1))
 print(SEIR_n)
-ggsave(file = file.path(fig_sim_path, 'SEIR', paste0(id_sim, "-SEIR-n.png")), plot = SEIR_n, height = 4, width = 20)
+ggsave(file = file.path(fig_sim_path, 'SEIR', paste0(id_sim, "-SEIR-n.png")), plot = SEIR_n, height = 3, width = 8)
 
 SEIR_p <- ggplot(counts_df, aes(x = time * 30 + begin_date, y = proportion, color = factor(status))) +
   geom_line() +
@@ -124,6 +125,7 @@ SEIR_p <- ggplot(counts_df, aes(x = time * 30 + begin_date, y = proportion, colo
        x = "Time",
        y = "Proportion of individuals",
        color = "Status") +
+  labs(title='') +
   scale_color_manual(values = SEIR_colors) +
   theme_bw() +
   theme(axis.text.x=element_text(angle=45, hjust=1))
@@ -346,5 +348,5 @@ sim_network <- vis_epicontacts(x,
 sim_network
 
 
-visSave(sim_network, file = file.path(fig_sim_path, paste0(id_sim, "-network.html")), selfcontained = T)
+visSave(sim_network, file = file.path(fig_sim_path, paste0("infection-network.html")), selfcontained = T)
 ```

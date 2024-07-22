@@ -23,17 +23,17 @@ loc_path <- file.path(out_path, "loc-nodscov2")
 sensibility_path <- file.path(out_path,'sensibility-analysis')
 
 ## BETA CALCULATED W/ MEAN (c.f. Q. LECLERC ET AL. 2023 PREPRINT)
-# id_sim <- "sim-mean"
+# id_sim <- "sim-beta-mean"
 # beta_type <- "beta-mean"
 
 ## BETA CALCULATED W/ MEDIAN (c.f. Q. LECLERC ET AL. 2023 PREPRINT)
-# id_sim <- "sim-median"
-# beta_type <- "beta-median"
+id_sim <- "sim-beta-median"
+beta_type <- "beta-median"
 
 # # BETA MANUALLY SELECTED
-beta <- '2.5'
-id_sim <- paste0("sim-beta-",beta)
-beta_type <- paste0("beta-", beta)
+# beta <- '2.5'
+# id_sim <- paste0("sim-beta-",beta)
+# beta_type <- paste0("beta-", beta)
 
 fig_path <- file.path(sensibility_path, id_sim, paste0(id_sim,"-fig"))
 
@@ -314,6 +314,56 @@ plot_SEIR(counts_C_E,
           id_sim)
 
 ```
+
+## C+E for report
+```{r}
+SEIR_colors <- c("Susceptible" = "green", "Exposed" = "pink", "Infectious" = "red", "Recovered" = "blue")
+n_sim <- length(counts_C_E)
+  
+  ## SEIR: NUMBER OF INDIVIDUAL
+  SEIR_n <- ggplot() + 
+    labs(x = "Time",
+         y = "Number of individuals",
+         color = "Status") +
+    scale_color_manual(values = SEIR_colors) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          plot.title = element_text(size = 16, hjust = 0.5),
+          axis.text = element_text(size = 12),
+          axis.title = element_text(size = 14),
+          legend.text = element_text(size = 12),
+          legend.title = element_text(size = 14))
+  
+  for (i in 1:n_sim){
+    SEIR_n <- SEIR_n + 
+      geom_line(data = counts_C_E[[i]],
+              aes(x = time * 30 + begin_date, y = count, color = status),
+              alpha = 0.5,
+              linewidth = 0.3,
+              linetype = "solid")
+  }
+  SEIR_n_t <- SEIR_n +
+    geom_borderline(data = median_counts_C_E,
+                    aes(x = time * 30 + begin_date, y = count , color = status),
+                    linewidth = 2,
+                    linetype = "solid",
+                    bordercolour = "white") +
+    # geom_line(data = median_counts_C_E,
+    #                 aes(x = time * 30 + begin_date, y = count , color = status),
+    #                 linewidth = 2,
+    #                 linetype = "solid")+
+    geom_line(data = min_counts_C_E,
+              aes(x = time * 30 + begin_date, y = count, color = status),
+              linewidth = 0.5,
+              linetype = "solid") +
+    geom_line(data = max_counts_C_E,
+              aes(x = time * 30 + begin_date, y = count, color = status),
+              linewidth = 0.5,
+              linetype = "solid")
+  print(SEIR_n_t)
+  ggsave(file = file.path(fig_path, paste0(id_sim, "-SEIR-n-total-report", ".png")), plot = SEIR_n, height = 15, width = 20)
+```
+
 
 
 

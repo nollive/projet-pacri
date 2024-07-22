@@ -70,6 +70,8 @@ id_room_patient <- rooms %>%
 
 ## CUMULATIVE NUMBER OF INTERACTION OVER TIME
 ```{r}
+
+
 p_number_int <- do.call(rbind, global_interaction) %>%
   mutate(type_int = paste0(from_status, "-", to_status)) %>%
   mutate(type_int = ifelse(type_int == "PA-PE", "PE-PA", type_int)) %>%
@@ -84,7 +86,8 @@ p_number_int <- do.call(rbind, global_interaction) %>%
   
     theme_bw() +
     theme(axis.text.x = element_text(angle = 35, hjust = 1)) +
-    labs(title = "Number of interaction over time", x = "Time", y = "Number of interactions", color = "Type of interaction") +
+    labs(x = "Time", y = "Number of interactions", color = "Type of interaction") +
+    # labs(title = "Number of interaction over time") +
     scale_color_manual(values = c("PE-PA" = "orange", "PE-PE" = "purple"), 
                        labels = c("PE-PA" = "Patient - HCW", 
                                   "PE-PE" = "HCW - HCW"))
@@ -180,6 +183,11 @@ test_loc %>% filter(room == "Medical Restroom" | room == "Paramedical Restroom")
 
 ## ORDERED CUMULATIVE TIME SPENT IN ROOMS
 ```{r}
+pal = c("#5CD6D6", "#A9B9E8", "#FFA766", "#666699")
+pal = c("#5CD6D6BF", "#A9B9E8BF", "#FFA766BF", "#666699BF") #ALPHA = 0.75
+names(pal) <- c('PARAMEDICAL', 'PATIENT', 'MEDICAL', 'ROOM')
+
+
 ## Cumulative time in patients rooms
 patients_room <- test_loc %>% filter(localization %in% id_room_patient) %>%
   group_by(id, .drop = "group") %>% 
@@ -198,16 +206,20 @@ total_room$room <- factor(total_room$room, levels = c("Corridor", "Patients Room
 p_cumulative_loc <- total_room %>%
   ggplot( aes(x=type, y=sum_room/3600, fill=type)) +
     geom_boxplot() +
-    scale_fill_viridis(discrete = TRUE, alpha=0.6) +
+    # scale_fill_viridis(discrete = TRUE, alpha=0.6) +
+    scale_fill_manual(values = pal) +
     geom_jitter(color="black", size=0.4, alpha=0.9) +
     ggh4x::facet_grid2(cols = vars(room), scales = "free_y", independent  ="y") +
+    
     theme_bw() +
     theme(
       legend.position="none",
       plot.title = element_text(size=11,hjust = 0.5),
       axis.text.x = element_text(angle = 35, hjust = 1)
     ) +
-    labs(title = "Cumulative time spent in rooms", x = "", y = "Cumulative time (h)")
+    # labs(title = "Cumulative time spent in rooms") +
+    labs(x = "", y = "Cumulative time (h)")
+    
 
 print(p_cumulative_loc)
 ggsave(file = file.path(fig_path, paste0("cumulative-time-rooms", ".png")), plot = p_cumulative_loc, height = 5, width = 12)
