@@ -182,7 +182,7 @@ for (patient in id_patient){
     new_id <- paste0(base_id, new_number, '-N-P')
     
     i_sampled <- as.integer(runif(1, min = 4*24*60*2, max = 6*24*60*2))
-    for (k in i:(i + i_sampled)){
+    for (k in i:(i + i_sampled - 1)){
       if (k <= length(test_interaction)){
         test_interaction[[k]] <-  test_interaction[[k]] %>%
         mutate(from = ifelse(from == patient, new_id, from),
@@ -195,9 +195,11 @@ for (patient in id_patient){
     }
     #ADD NEW ID TO THE STATUS DF
     test_status <- rbind(test_status, data.frame(id = new_id,
-                                                   t_inf = -1,
-                                                   t_incub = -1,
-                                                   t_recover = -1))
+                                                 t_inf = -1,
+                                                 t_incub = -1,
+                                                 t_recover = -1,
+                                                 inf_by = NA,
+                                                 inf_room = -1))
     
     admission_sim  <- rbind(admission_sim, admission_sim %>% filter(id == patient) %>% mutate(id = new_id))
     i <- i + i_sampled
