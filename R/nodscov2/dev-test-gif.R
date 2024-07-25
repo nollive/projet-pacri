@@ -49,14 +49,19 @@ t_begin <- 5*60*2 ## OFFSET t
 t_end <- (t_begin + 24*60*2) - 1
 
 
-#data <- do.call(rbind, global_localization)
-data <- do.call(rbind, global_localization) %>% filter(between(time, t_begin, t_end))
-data <- data %>%
+cat_medical <- c("physician", "ext physician", "reeducation staff", "other")
+cat_paramedical <- c("nurse", "student nurse", "aux nurse")
+
+data <- do.call(rbind, global_localization) %>%
+  filter(between(time, t_begin, t_end)) %>%
+  filter(time < 650) %>%
   filter(localization != -1) %>%
   left_join(rooms_coords, by = c("localization")) %>%
   left_join(admission, by = c("id")) %>%
-  mutate(cat = ifelse(is.na(cat), "patient", cat)) %>%
-  filter(cat != "patient")
+  mutate(cat = ifelse(is.na(cat), "patient", cat))  %>%
+  filter(cat != "patient") %>%
+  mutate(type = ifelse(cat %in% cat_medical, 'Medical', 'Paramedical'))
+
 
 
 
@@ -94,12 +99,18 @@ segments_data <- data %>%
   ungroup()
 
 
-# Plot
-p <- ggplot(data, aes(x = x_adj, y = y_adj, color = cat, group = id)) +
+##########
+## Plot ##
+##########
+## Color palette
+## ALPHA = 1
+pal = c('Medical' = "#5CD6D6", 'Paramedical' = "#A9B9E8", 'Patient' = "#FFA766", 'Room' = "#666699")
+
+p <- ggplot(data, aes(x = x_adj, y = y_adj, colour = type, group = id)) +
   geom_point(size = 5) +
   #geom_segment(data = segments_data, aes(xend = x_end, yend = y_end), alpha = 0.5) +
   geom_text_repel(aes(label = id), size = 5, box.padding = 0.5, point.padding = 0.5, max.overlaps = Inf) +
-  scale_color_discrete(name = "Category") +
+  scale_colour_manual(values = pal, name = "Type") +
   scale_y_continuous(breaks = 1:4, labels = c("Patient room", "Corridor", "Office \n Nursing station", "Restroom")) +
   scale_x_continuous(breaks = 1:(sum(rooms_coords$y == 1)+1), labels = c(paste0("Room ", 1:(sum(rooms_coords$y == 1)+1)))) +
   labs(title = 'Individual position at time : {begin_date + (frame_time * 30)},  at time step : {frame_time}', x = 'Patient room', y = 'Type of room') +
@@ -118,7 +129,11 @@ animation <- p +
   ease_aes('linear')
 
 
+
 nframes <- nrow(data%>%distinct(time))
 fps <- 50
 duration <- nframes / fps
 animate(animation, renderer = gifski_renderer("trajectories-gif.gif"), width = 3000, height = 1333, fps = 50, nframes = nframes, duration = duration)
+
+## .mp4 conversion with ffmpeg
+## ffmpeg -i trajectories-gif.gif -movflags faststart -pix_fmt yuv420p -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" trajectories.mp4
