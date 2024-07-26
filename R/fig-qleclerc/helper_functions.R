@@ -23,8 +23,8 @@ get_net_metrics = function(graph_data, iter = 0, network = "Observed"){
       filter(date_posix == days[i])
     
     graph_d = graph_from_data_frame(data_d, directed = F)
-    graph_d = simplify(graph_d)
-    vertex_atts = data.frame(id = get.vertex.attribute(graph_d, "name")) %>%
+    graph_d = igraph::simplify(graph_d)
+    vertex_atts = data.frame(id = vertex_attr(graph_d, "name")) %>%
       left_join(adm_data, "id") %>%
       mutate(ward = replace(ward, ward == "Menard 1", "Neurologic (1)"),
              ward = replace(ward, ward == "Menard 2", "Neurologic (2)"),
@@ -41,8 +41,8 @@ get_net_metrics = function(graph_data, iter = 0, network = "Observed"){
     data$degrees[i] = mean(degree(graph_d))
     data$densities[i] = edge_density(graph_d)
     data$transitivities[i] = transitivity(graph_d)
-    data$assortativities[i] = assortativity.degree(graph_d, directed = F)
-    data$assortativities_ward[i] = assortativity.nominal(graph_d, as.factor(V(graph_d)$ward), directed = F)
+    data$assortativities[i] = assortativity_degree(graph_d, directed = F)
+    data$assortativities_ward[i] = assortativity_nominal(graph_d, as.factor(V(graph_d)$ward), directed = F)
     data$efficiencies[i] = global_efficiency(graph_d, directed = F)
     
   }
@@ -64,12 +64,12 @@ temporal_correlation = function(graph_data){
     data_t1 = graph_data %>%
       filter(date_posix == unique(graph_data$date_posix)[i])
     graph_t1 = graph_from_data_frame(data_t1, directed = F)
-    graph_t1 = simplify(graph_t1)
+    graph_t1 = igraph::simplify(graph_t1)
     
     data_t2 = graph_data %>%
       filter(date_posix == unique(graph_data$date_posix)[i+1])
     graph_t2 = graph_from_data_frame(data_t2, directed = F)
-    graph_t2 = simplify(graph_t2)
+    graph_t2 = igraph::simplify(graph_t2)
     
     temp_cor_indiv = c()
     

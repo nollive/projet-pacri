@@ -16,11 +16,11 @@ library(openxlsx)
 library(here)
 library(dplyr)
 library(lubridate)
-library(igraph)
 library(ggnetwork)
 library(ggtext)
 library(cowplot)
 library(RColorBrewer)
+library(igraph)
 
 ## Functions for graph analysis (https://github.com/qleclerc/network_algorithm/)
 ## Following script based on https://github.com/qleclerc/network_algorithm/blob/main/analysis/fig1.R
@@ -169,6 +169,7 @@ graph_data_PA_PE = graph_data %>%
 ## Metrics
 ```{r}
 all_metrics = get_net_metrics(graph_data, network = "Full")
+
 PA_PA_metrics = get_net_metrics(graph_data_PA_PA, network = "PA-PA")
 PE_PE_metrics = get_net_metrics(graph_data_PE_PE, network = "PE-PE")
 PA_PE_metrics = get_net_metrics(graph_data_PA_PE, network = "PA-PE")
