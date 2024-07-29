@@ -133,7 +133,7 @@ p_n_RP <- admission %>%
     legend.title = element_text(size = 40)) +
   geom_text(aes(label=n), vjust=-0.25, size=5)
 
-ggsave(filename = file.path(wd, '..', '..', 'out', 'RP-number-individual.png'), plot = p_n_RP, height = 14, width = 26)
+ggsave(filename = file.path(wd, '..', '..', 'out', 'fig', 'RP-number-individual.png'), plot = p_n_RP, height = 14, width = 26)
 ```
 
 
