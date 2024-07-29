@@ -227,6 +227,7 @@ ggsave(file = file.path(fig_path, paste0("cumulative-time-rooms", ".png")), plot
 
 ## TEMP - Tracking individual
 ```{r}
+pal = c('Medical' = "#5CD6D6", 'Paramedical' = "#A9B9E8", 'Patient' = "#FFA766", 'Room' = "#666699")
 paths <- do.call(rbind, global_localization) %>% filter(between(time, 600, 600+2880)) %>% ## FILTER TO KEEP ONLY THE 24H OF INTEREST
   left_join(rooms %>%
               distinct(id_room, .keep_all = T) %>%
@@ -252,15 +253,20 @@ end_time <- start_time + (max(time_breaks) - min(time_breaks))
 
 save_individual_path <- function(ind) {
   ind_cat <- ifelse(!is.na(admission[admission$id == ind, "cat"]), admission[admission$id == ind, "cat"], "patient")
-  title <-paste0('Individual trajectory over time - ', ind, ' - ', ind_cat) 
-  p <- ggplot(paths %>% filter(id == ind), aes(x = time * 30 + begin_date, y = room)) +
+  ind_type <- case_when(ind %in% id_medical ~ 'Medical',
+                        ind %in% id_paramedical ~ 'Paramedical',
+                        ind %in% id_patient ~ 'Patient')
+
+  title <-paste0('Individual trajectory over time - ', ind, ' - ', ind_type, ' - ', ind_cat) 
+  p <- ggplot(paths %>% filter(id == ind), aes(x = time * 30 + begin_date, y = room, colour = ind_type)) +
     geom_path(aes(group = id)) +  # geom_path -> connected lines
     geom_point(aes(shape = id)) +  # geom_point -> points
     labs(title = title, x = "Time", y = "") +
     theme_bw() +
+    scale_colour_manual(values = pal) +
     scale_x_continuous(breaks = time_breaks, labels = time_labels) +
     theme(
-    plot.title = element_text(size = 25, hjust = 0.5, family = "Arial monospaced for SAP"), #
+    plot.title = element_text(size = 25, hjust = 0.5, family = "Arial monospaced for SAP"), #use extrafont package if the font is not installed locally
     axis.text = element_text(size = 20, family = "Arial monospaced for SAP"),
     axis.title = element_text(size = 20, family = "Arial monospaced for SAP"),
     legend.text = element_text(size = 20, family = "Arial monospaced for SAP"),
@@ -268,7 +274,7 @@ save_individual_path <- function(ind) {
     legend.position="none") 
     
   # filename
-  file_name <- file.path(ind_paths_path, paste0(ind,"_", ind_cat, "_fig-traj", ".png"))
+  file_name <- file.path(ind_paths_path, paste0(ind, "_", ind_cat, "_", ind_type, "_fig-traj", ".png"))
   ggsave(file = file_name, plot = p, height = 6, width = 30, units = "in")
 }
 
@@ -277,12 +283,6 @@ invisible(map(id_interacting, save_individual_path))
 
 ```
 
-
-
-```{r}
-
-
-```
 
 
 
