@@ -207,6 +207,7 @@ nu <- 1 * 24 # (10 quanta/h)
 
 
 ```{r}
+## MIGHT TAKE A WHILE SAVING GLOBAL OBJECT FOR HIGH n_days 
 save_path <- file.path(intervention_path, "parameters-admission-nodscov2.RData")
 
 save(global_interaction,
