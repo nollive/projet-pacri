@@ -100,6 +100,7 @@ filter_interacting <- function(list_df, id_interacting) {
 
 truncated_localization <- filter_interacting(truncated_localization, id_interacting )
 truncated_status <- global_status %>% filter(id %in% id_interacting)
+admission <- admission %>% filter(id %in% id_interacting)
 admission_sim <- admission_sim  %>% filter(id %in% id_interacting)
 
 truncated_data <- lapply(1:length(truncated_localization), function(t){
@@ -270,7 +271,7 @@ new_n_subdivisions <- (t_end-t_begin +1)*n_days
 #######################
 ## RANDOM INDEX CASE ##
 #######################
-id_index <- sample( x = admission_sim %>% filter(id %in% admissiom$id) %>% distinct(id) %>% pull(), size = 1)
+id_index <- sample( x = admission_sim %>% filter(id %in% admission$id) %>% distinct(id) %>% pull(), size = 1)
 # UPDATE STATUS
 test_status <- test_status %>%
   mutate(t_inf = ifelse(id == id_index,
