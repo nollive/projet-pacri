@@ -202,7 +202,7 @@ deltat <- dt/tau
 env_threshold <- 0 # Quanta threshold above which the environment is infectious
 
 ## BETA AND NU COUPLES (tested to give the same 20% SAR)
-beta <- 1
+beta <- 1 * 24# Transmission rate for close contact interaction /h
 nu <- 1 * 24 # (10 quanta/h)
 ```
 
