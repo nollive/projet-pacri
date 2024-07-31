@@ -10,48 +10,11 @@ output: html_document
 library(dplyr)
 library(tidyr)
 library(purrr)
+library(data.table)
 
-## READ RData FILES -> STRUCTURE OF FILE: sim_<beta>_<nu>_<sim_id>.RData 
-## WARNING BETA = 1/3 WILL BE WRITTEN AS 1-3
-## IN THE RDATA FILE, THERE WILL BE A DATAFRAME NAMED: sim_<beta>_<nu>_<sim_id>
-load_rdata_to_list <- function(file, list_sim, dir) {
-  load(file.path(intervention_path, 'out', dir, 'results', file))
-  file_name <- basename(file)
-  parts <- strsplit(file_name, "_")[[1]]
-  sim_id <- parts[length(parts)] ## last number is the sim id
-  sim_id <- as.integer(sub("\\.RData$", "", sim_id))  # Remove file extension
-  # beta <- eval(parse(text = gsub(pattern = '-', replacement = '/', x = parts[2])))
-  # nu <- eval(parse(text = gsub(pattern = '-', replacement = '/', x = parts[3])))
-  sim_object <- get(sub("\\.RData$", "", file_name))
-  list_sim[[dir]][[sim_id]] <<- sim_object
-}
 
-SEIR_counts <- function(status_sim, n_subdivisions, n_individual) {
-  ## Time steps
-  times <- seq(1, n_subdivisions, 100)
-  ##DF
-  counts_df <- data.frame(
-    Susceptible = colSums(outer(status_sim$t_inf, times, function(x, y) x == -1 | x > y)),
-    Exposed = colSums(outer(status_sim$t_inf, times, function(x, y) x <= y) & outer(status_sim$t_incub, times, function(x, y) x > y)),
-    Infectious = colSums(outer(status_sim$t_incub, times, function(x, y) x <= y) & outer(status_sim$t_recover, times, function(x, y) x > y)),
-    Recovered = colSums(outer(status_sim$t_recover, times, function(x, y) x <= y) & outer(status_sim$t_inf, times, function(x, y) x != -1)),
-    time = times
-  )
-  ## Pivot for easier plot
-  counts_df <- counts_df %>%
-    pivot_longer(cols = c("Susceptible", "Exposed", "Infectious", "Recovered"), names_to = "status", values_to = "count") %>%
-    mutate(proportion = count * 100 / n_individual)
-  ## ## S E I R as factor 
-  counts_df$status <- factor(counts_df$status, levels = c("Susceptible", "Exposed", "Infectious", "Recovered"))
-  
-  return(counts_df)
-}
 
-SEIR_to_list <- function(sim_list, n_subdivisions, n_individual) {
-  lapply(sim_list, function(status_sim) {
-    SEIR_counts(status_sim, n_subdivisions, n_individual)
-  })
-}
+
 ```
 
 
@@ -69,6 +32,7 @@ intervention_path <- file.path(out_path, 'intervention-analysis')
 ```{r}
 load(file.path(loc_path, 'dev-localization-nodscov2.RData'))
 load(file.path(intervention_path, "parameters-admission-nodscov2.RData"))
+
 ##TO FIX IN loc-to-RData (rerun to update parameters.RData)
 admission <- admission %>% filter(id %in% admission_sim$id)
 ```
@@ -120,10 +84,11 @@ list_SAR <- get_all_SAR(list_sim = list_sim,
 
 ## SAR METRICS
 ```{r}
-all_SAR_metrics <- get_all_SAR_metrics(list_SAR)
+all_SAR_metrics <- get_all_SAR_metrics(list_SAR = list_SAR)
 
 ##SELECT COUPLES FOR SAR +/- 20%
-all_SAR_metrics %>% filter(dplyr::between(SAR_median, 0.15, 0.25))
+all_SAR_metrics %>% filter(dplyr::between(SAR_median, 0.10, 0.30))
+all_SAR_metrics %>% filter(dplyr::between(SAR_mean, 0.15, 0.25))
 ```
 
 ## SAR_distribution  
@@ -135,10 +100,26 @@ get_SAR_distribution <- function(couple, list_SAR){
 get_SAR_distribution(couple, list_SAR)
 ```
 
+## EPIDEMIC DURATION
+```{r}
+list_epidemic_duration <- get_all_epidemic_duration(list_sim = list_sim)
+all_epidemic_duration_metrics <- get_all_epidemic_duration_metrics(list_epidemic_duration = list_epidemic_duration)
+```
+
+## MAX N INFECTIOUS AT PEAK
 
 
 
-## FOR EACH SIMULATION -> COMPUTE SEIR COUNTS
+
+## ALL METRICS IN ONE DF
+```{r}
+all_metrics <- left_join(all_SAR_metrics, all_epidemic_duration_metrics, by="couple", suffix=c("",".y")) %>%
+  select(-ends_with(".y"))
+```
+
+
+
+## SEIR
 ```{r}
 id_global <- global_status %>% distinct(id) %>% pull()
 n_individual <- length(id_global)
@@ -154,6 +135,9 @@ for(couple in names(list_sim)){
   list_SEIR[[couple]] <- SEIR_to_list(sim_list = list_sim[[couple]], n_subdivisions = new_n_subdivisions, n_individual = n_individual)
 
 }
+
+
+
 ```
 
 
