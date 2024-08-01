@@ -7,14 +7,11 @@ output: html_document
 
 ```{r}
 ## LIBRARIES
+library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(purrr)
 library(data.table)
-
-
-
-
 ```
 
 
@@ -26,6 +23,54 @@ source(file.path(wd, 'intervention-analysis_fun.R'))
 out_path <- file.path(wd,'..','..', 'out')
 loc_path <- file.path(out_path,'loc-nodscov2')
 intervention_path <- file.path(out_path, 'intervention-analysis')
+```
+
+
+```{r}
+archive_path <- file.path(intervention_path, 'out-01-08-24.tar.gz')
+content <- untar(archive_path, list = TRUE)
+
+archive_path <- file.path(intervention_path, 'out-01-08-24-bis.tar.gz')
+content <- untar(archive_path, list = TRUE)
+
+get_dirs <- function(paths) {
+  dirs <- unique(dirname(paths)) 
+  main_dirs <- unique(sapply(dirs, function(dir) {
+    if (grepl("out/sim", dir) & !(grepl("/results", dir))) {
+      return(gsub(pattern = 'out/', '',  dir))
+    }
+  }))
+  main_dirs <- na.omit(main_dirs)
+  return(main_dirs)
+}
+
+get_sims <- function(paths, couple) {
+  sims <- unique(sapply(paths, function(dir) {
+    if(grepl("^sim_.*\\.RData$", dir) ) {
+      return(dir)
+    }
+  }))
+  sims <- na.omit(sims)
+  return(sims)
+}
+get_sims(content, dir)
+
+
+list_dirs <- get_dirs(content)
+## READ ALL SIMULATION FOR ALL AVAILABLE COUPLES
+for (dir in list_dirs){
+  if (is.null(dir)){
+    print('exit')
+  } else{
+    list_sim[[dir]] <- list()
+    sim_path <- file.path(intervention_path, 'out' , dir, 'results')
+    rdata_files <- list.files(sim_path, pattern = "^sim_.*\\.RData$", full.names = F)
+    invisible(lapply(rdata_files, function(file) load_rdata_to_list(file, list_sim, dir)))
+  }
+  
+}
+
+
 ```
 
 ## LOAD LOCALIZATION DATA & GLOBAL PARAMETERS
@@ -118,7 +163,212 @@ all_metrics <- left_join(all_SAR_metrics, all_epidemic_duration_metrics, by="cou
   select(-ends_with(".y"))
 
 write.csv2(all_metrics, file = file.path(intervention_path, 'intervention-all_metrics.csv'), row.names = F)
+
 ```
+
+```{r}
+all_metrics <- read.csv2(file = file.path(intervention_path, 'intervention-all_metrics.csv'))
+all_metrics %>% filter(dplyr::between(SAR_median, 0.10, 0.30))
+library(ggplot2)
+
+### x = beta < 4
+ggplot(all_metrics %>% filter(beta < 4), aes(x = beta, y = SAR_median, color = as.factor(nu), group = nu)) +
+  geom_line() +
+  geom_point() +
+  geom_hline(yintercept = 0.1, linetype = "dashed", color = "darkgrey") +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 0.1, ymax = 0.3, alpha = 0.3, fill = "lightgrey") +
+  geom_hline(yintercept = 0.3, linetype = "dashed", color = "darkgrey") +
+  labs(title = 'SAR Median vs Beta for Different Nu Values',
+       x = 'Beta',
+       y = 'SAR Median',
+       color = 'Nu') +
+  theme_minimal()
+
+
+### x = nu
+ggplot(all_metrics, aes(x = nu, y = SAR_median, color = as.factor(beta), group = beta)) +
+  geom_line() +
+  geom_point() +
+  geom_hline(yintercept = 0.1, linetype = "dashed", color = "darkgrey") +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 0.1, ymax = 0.3, alpha = 0.3, fill = "lightgrey") +
+  geom_hline(yintercept = 0.3, linetype = "dashed", color = "darkgrey") +
+  labs(title = 'SAR Median vs Nu for Different Beta Values',
+       x = 'nu',
+       y = 'SAR Median',
+       color = 'Beta') +
+  theme_minimal()
+
+### x = beta < 4 AND GREY ZONE FOR SAR
+beta <- all_metrics$beta
+ggplot(all_metrics, aes(x = beta, y = SAR_median, color = as.factor(nu), group = nu)) +
+  geom_line() +
+  geom_point() +
+  geom_hline(yintercept = 0.2, linetype = "dashed", color = "darkgrey") +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 0.2, ymax = 0.3, alpha = 0.3, fill = "lightgrey") +
+  geom_hline(yintercept = 0.3, linetype = "dashed", color = "darkgrey") +
+  scale_x_continuous("Beta", labels = as.character(all_metrics$beta), breaks = all_metrics$beta) +
+  labs(title = 'SAR Median vs Beta for Different Nu Values',
+       x = 'Beta',
+       y = 'SAR Median',
+       color = 'Nu') +
+  theme_minimal()
+
+
+##### HEATMAP
+ggplot(all_metrics, aes(x = beta, y = nu, fill = SAR_median)) +
+  geom_tile() +
+  scale_fill_gradientn(colors = c("red", "yellow", "green", "blue")) +
+  labs(title = "2D Surface Plot of Grid Search Results",
+       x = "Beta",
+       y = "Nu",
+       fill = "SAR Median") +
+  theme_minimal()
+
+## multiple simulation for the same couple?
+all_SAR_metrics %>% group_by(beta,nu) %>% summarise(n = n())
+```
+
+
+```{r}
+### 3D SURFACE PLOT USING PLOTLY
+library(reshape2)
+library(plotly)
+
+# Reshape the data
+grid_data <- dcast(all_metrics, beta ~ nu, value.var = "SAR_median")
+beta_values <- as.numeric(as.vector(grid_data$beta))
+nu_values <- as.numeric(as.vector(colnames(grid_data)[-1]))
+SAR_matrix <- as.matrix(grid_data[, -1])
+
+
+fig <- plot_ly(
+  x = ~beta_values,
+  y = ~nu_values,
+  z = ~SAR_matrix,
+  type = 'surface',
+  colorscale = list(
+    c(0, 'blue'),        # for SAR_median < 0.15
+    c(0.15, 'yellow'),   # for SAR_median between 0.15 and 0.25
+    c(0.25, 'red'),      # for SAR_median > 0.25
+    c(1, 'red')
+  ),
+  cmin = 0,
+  cmax = 1
+) %>%
+  layout(
+    title = '3D Surface Plot of SAR Median',
+    scene = list(
+      xaxis = list(title = 'Beta'),
+      yaxis = list(title = 'Nu'),
+      zaxis = list(title = 'SAR Median'),
+      aspectmode = 'cube'
+    )
+  )
+
+fig
+
+## WITH MARKERS = ACTUAL RESULTS
+fig <- plot_ly(
+  x = ~beta_values,
+  y = ~nu_values,
+  z = ~SAR_matrix,
+  type = 'surface'
+) %>%
+  add_markers(
+    data = all_metrics,
+    x = ~beta,
+    y = ~nu,
+    z = ~SAR_median,
+    marker = list(
+      color = 'black',
+      size = 5,
+      symbol = 'circle'
+    )
+) %>%
+  layout(
+    title = '3D Surface Plot of SAR Median',
+    scene = list(
+      xaxis = list(title = 'Beta'),
+      yaxis = list(title = 'Nu'),
+      zaxis = list(title = 'SAR Median'),
+      aspectmode = 'cube'
+    )
+  )
+
+fig
+
+
+
+```
+
+```{r}
+#### DISTANCE TO THE SEARCHED SAR
+# WE WANT A GLOBAL SAR = 20%
+SAR_wanted <- 0.2
+
+# distance to sar
+distance_matrix <- 1 - abs(SAR_matrix - SAR_wanted)
+
+fig <- plot_ly(
+  x = ~beta_values,
+  y = ~nu_values,
+  z = ~distance_matrix,
+  type = 'surface',
+  colorscale = list(
+    c(0, 'red'),        # for distance < 0.05
+    c(0.7, 'red'),   # for distance between 0.05 and 0.15
+    c(0.85, 'yellow'),      # for distance > 0.15
+    c(1, 'blue')
+  ),
+  cmin = 0,
+  cmax = 1
+) %>%
+  layout(
+    title = 'Distance to SAR',
+    scene = list(
+      xaxis = list(title = 'Beta'),
+      yaxis = list(title = 'Nu'),
+      zaxis = list(title = 'Distance to SAR'),
+      aspectmode = 'cube'
+    )
+  )
+
+fig
+
+
+## WITH MARKERS = ACTUAL RESULTS
+fig <- plot_ly(
+  x = ~beta_values,
+  y = ~nu_values,
+  z = ~distance_matrix,
+  type = 'surface'
+) %>%
+  add_markers(
+    data = all_metrics,
+    x = ~beta,
+    y = ~nu,
+    z = ~(abs(SAR_median - SAR_wanted)),
+    marker = list(
+      color = 'black',
+      size = 5,
+      symbol = 'circle'
+    )
+  ) %>%
+  layout(
+    title = 'Distance to SAR',
+    scene = list(
+      xaxis = list(title = 'Beta'),
+      yaxis = list(title = 'Nu'),
+      zaxis = list(title = 'Distance to SAR'),
+      aspectmode = 'cube'
+    )
+  )
+
+fig
+
+```
+
+
 
 
 
