@@ -327,11 +327,12 @@ get_all_SEIR_metrics <- function(list_SEIR) {
 plot_SEIR_n <- function(couple, list_SEIR, all_SEIR_metrics) {
   SEIR_colors <- c("Susceptible" = "green", "Exposed" = "pink", "Infectious" = "red", "Recovered" = "blue")
   fig_path <- file.path(intervention_path, 'fig', 'SEIR')
-  dir.create(path = fig_path, showWarning)
+  dir.create(path = fig_path, showWarnings = F)
   n_sim <- length(list_SEIR[[couple]])
   title <- paste0('SEIR - ', couple)
   counts_list <- list_SEIR[[couple]]
-  metrics_df <- all_SEIR_metrics %>% filter(couple == couple)
+  couple_id <- couple
+  metrics_df <- all_SEIR_metrics %>% filter(couple == couple_id)
   ## SEIR: NUMBER OF INDIVIDUAL
   SEIR_n <- ggplot() + 
     labs(x = "Time",
