@@ -459,6 +459,19 @@ ggplot(all_metrics, aes(x = beta, y = nu, fill = SAR_median)) +
 
 ```
 
+## SEIR PLOTS 
+```{r}
+list_SEIR <- get_all_SEIR(list_sim, n_subdivisions = new_n_subdivisions)
+
+seir_metrics <- get_all_SEIR_metrics(list_SEIR = list_SEIR)
+
+
+plot_SEIR_n(couple = couple, list_SEIR = list_SEIR, all_SEIR_metrics = seir_metrics)
+```
+
+
+
+
 
 ```{r}
 ### 3D SURFACE PLOT USING PLOTLY

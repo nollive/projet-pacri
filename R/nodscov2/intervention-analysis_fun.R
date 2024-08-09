@@ -289,3 +289,155 @@ get_all_SEIR <- function(list_sim, n_subdivisions) {
   }
   return(list_SEIR)
 }
+
+
+###################
+## SEIR  METRICS ##
+###################
+get_SEIR_metrics <- function(couple, list_SEIR) {
+  couple_SEIR_metrics <- rbindlist(list_SEIR[[couple]]) %>%
+    group_by(time, status) %>%
+    summarize(
+      count_median = median(count),
+      count_min = min(count),
+      count_max = max(count),
+      count_mean = mean(count),
+      proportion_median = median(proportion),
+      proportion_min = min(proportion),
+      proportion_max = max(proportion),
+      proportion_mean = mean(proportion),
+      .groups = 'drop') %>% 
+    mutate(couple = couple)
+    
+  
+  return(couple_SEIR_metrics)
+}
+
+get_all_SEIR_metrics <- function(list_SEIR) {
+  all_SEIR_metrics <- data.frame()
+  for(couple in names(list_SEIR)){
+    all_SEIR_metrics <- rbind(all_SEIR_metrics, get_SEIR_metrics(couple, list_SEIR) )
+  }
+  return(all_SEIR_metrics)
+}
+  
+###############
+## PLOT SEIR ##
+################
+plot_SEIR_n <- function(couple, list_SEIR, all_SEIR_metrics) {
+  SEIR_colors <- c("Susceptible" = "green", "Exposed" = "pink", "Infectious" = "red", "Recovered" = "blue")
+  fig_path <- file.path(intervention_path, 'fig', 'SEIR')
+  dir.create(path = fig_path, showWarning)
+  n_sim <- length(list_SEIR[[couple]])
+  title <- paste0('SEIR - ', couple)
+  counts_list <- list_SEIR[[couple]]
+  metrics_df <- all_SEIR_metrics %>% filter(couple == couple)
+  ## SEIR: NUMBER OF INDIVIDUAL
+  SEIR_n <- ggplot() + 
+    labs(x = "Time",
+         y = "Number of individuals",
+         # title = title,
+         color = "Status") +
+    scale_color_manual(values = SEIR_colors) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          plot.title = element_text(size = 16, hjust = 0.5),
+          axis.text = element_text(size = 12),
+          axis.title = element_text(size = 14),
+          legend.text = element_text(size = 12),
+          legend.title = element_text(size = 14))
+  
+  for (i in 1:n_sim){
+    SEIR_n <- SEIR_n + 
+      geom_line(data = counts_list[[i]],
+                aes(x = time * 30 + begin_date, y = count, color = status),
+                alpha = 0.5,
+                linewidth = 0.3,
+                linetype = "solid")
+  }
+  print(SEIR_n)
+  ggsave(file = file.path(fig_path, paste0(couple, '-SEIR-n.png')), plot = SEIR_n, height = 30, width = 40)
+  
+  ## SEIR: NUMBER WITH MEDIAN AND MIN/MAX
+  SEIR_n_t <- SEIR_n +
+    geom_borderline(data = metrics_df,
+                    aes(x = time * 30 + begin_date, y = count_median , color = status),
+                    linewidth = 2,
+                    linetype = "solid",
+                    bordercolour = "white") +
+    # geom_line(data = metrics_df,
+    #                 aes(x = time * 30 + begin_date, y = count_median , color = status),
+    #                 linewidth = 2,
+    #                 linetype = "solid")+
+    geom_line(data = metrics_df,
+              aes(x = time * 30 + begin_date, y = count_min, color = status),
+              linewidth = 0.5,
+              linetype = "solid") +
+    geom_line(data = metrics_df,
+              aes(x = time * 30 + begin_date, y = count_max, color = status),
+              linewidth = 0.5,
+              linetype = "solid")
+  print(SEIR_n_t)
+  ggsave(file = file.path(fig_path, paste0(couple, '-SEIR-n-total.png')), plot = SEIR_n_t, height = 30, width = 40)
+}
+
+
+
+
+plot_SEIR_p <- function(couple, list_SEIR) {
+  SEIR_colors <- c("Susceptible" = "green", "Exposed" = "pink", "Infectious" = "red", "Recovered" = "blue")
+  fig_path <- file.path(intervention_path, 'fig', 'SEIR')
+  n_sim <- length(list_SEIR[[couple]])
+  title <- paste0('SEIR - ', couple)
+  counts_list <- list_SEIR[[couple]]
+  metrics_df <- all_SEIR_metrics %>% filter(couple == couple)
+  
+  ## SEIR: PROPORTION OF INDIVIDUAL
+  SEIR_p <- ggplot() + 
+    labs(x = "Time",
+         y = "Proportion of individuals",
+         # title = paste("SEIR -", title),
+         color = "Status") +
+    scale_color_manual(values = SEIR_colors) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          plot.title = element_text(size = 16, hjust = 0.5),
+          axis.text = element_text(size = 12),
+          axis.title = element_text(size = 14),
+          legend.text = element_text(size = 12),
+          legend.title = element_text(size = 14))
+  
+  for (i in 1:n_sim){
+    SEIR_p <- SEIR_p + 
+      geom_line(data = counts_list[[i]],
+                aes(x = time * 30 + begin_date, y = proportion, color = status),
+                alpha = 0.5,
+                linewidth = 0.3,
+                linetype = "solid")
+  }
+  print(SEIR_p)
+  ggsave(file = file.path(fig_path, paste0(couple, '-SEIR-p.png')), plot = SEIR_p, height = 30, width = 40)
+  
+  ## SEIR : PROPORTION WITH MEDIAN AND MIN/MAX
+  SEIR_p_t <- SEIR_p +
+    geom_borderline(data = metrics_df,
+                    aes(x = time * 30 + begin_date, y = proportion_median , color = status),
+                    linewidth = 2,
+                    linetype = "solid",
+                    bordercolour = "white") +
+    # geom_line(data = metrics_df,
+    #           aes(x = time * 30 + begin_date, y = proportion_median , color = status),
+    #           linewidth = 2,
+    #           linetype = "solid") +
+    geom_line(data = metrics_df,
+              aes(x = time * 30 + begin_date, y = proportion_min, color = status),
+              linewidth = 0.5,
+              linetype = "solid") +
+    geom_line(data = metrics_df,
+              aes(x = time * 30 + begin_date, y = proportion_max, color = status),
+              linewidth = 0.5,
+              linetype = "solid")
+  print(SEIR_p_t)
+  ggsave(file = file.path(fig_path, paste0(couple, '-SEIR-p-total.png')), plot = SEIR_p_t, height = 30, width = 40)
+}
+
