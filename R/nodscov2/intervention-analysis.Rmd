@@ -359,8 +359,8 @@ test = df_status %>%
     ),
     # start_exposed = as.Date(new_begin_date + t_inf * 30), 
     # end_exposed = as.Date(new_begin_date + (t_inf + t_incub) * 30)#,
-    start_infected = as.Date(new_begin_date + (t_inf + t_incub) * 30),
-    end_infected = as.Date(new_begin_date + (t_inf + t_incub + t_recover) * 30)
+    start_infected = as.Date(new_begin_date + seconds((t_inf + t_incub) * 30)),
+    end_infected = as.Date(new_begin_date + seconds((t_inf + t_incub + t_recover) * 30))
   ) %>%
   dplyr::select(couple, id_sim, id, type_ind, matches("start_|end_")) %>%
   group_by(couple, id_sim, id, type_ind) %>% 
@@ -369,18 +369,31 @@ test = df_status %>%
   summarise(n = n(), .groups = "drop") %>%
   complete(couple, id_sim, date, type_ind, fill = list(n = 0))
   
+test <- test%>%
+  mutate(scenario = case_when(
+    couple == 'sim_1-4_20'~ 'Scenario 1',
+    couple == 'sim_1-2_16'~ 'Scenario 2',
+    couple == 'sim_3-4_12'~ 'Scenario 3',
+    couple == 'sim_1_8'~ 'Scenario 4',
+    couple == 'sim_3-2_5'~ 'Scenario 5'))
+test$scenario <- factor(test$scenario, levels = c(paste0(rep('Scenario ',5), 1:5)))
+
 
 test_mean = test %>% 
-  group_by(couple, date, type_ind) %>%
+  group_by(scenario, date, type_ind) %>%
   summarise(n = mean(n), .groups = "drop") %>%
   mutate(id_sim = NA)
-
-test %>%
+Sys.setlocale("LC_ALL", "English")
+p_seir <- test %>%
   ggplot(., aes(x = date, y = n, group = id_sim)) +
-  geom_line(linewidth = 0.1, col = "gray80") +
+  geom_line(linewidth = 0.5, col = "gray80") +
   geom_line(data = test_mean, col = "red") +
-  facet_grid(cols = vars(couple), rows = vars(type_ind)) +
+  facet_grid(cols = vars(scenario), rows = vars(type_ind)) +
+  scale_x_date(date_labels = "%b/%d") +
   theme_bw()
+
+print(p_seir)
+ggsave(filename = file.path(intervention_path, 'fig', 'seir-cat.png'), plot = p_seir, width = 14, height = 7)
 
 ```
 
@@ -417,19 +430,22 @@ ggplot(all_metrics, aes(x = nu, y = SAR_median, color = as.factor(beta), group =
 
 ### x = beta < 4 AND GREY ZONE FOR SAR
 beta <- all_metrics$beta
-ggplot(all_metrics, aes(x = beta, y = SAR_median, color = as.factor(nu), group = nu)) +
+p_grid <- ggplot(all_metrics , aes(x = beta, y = SAR_median, color = as.factor(nu), group = nu)) +
   geom_line() +
   geom_point() +
   geom_hline(yintercept = 0.2, linetype = "dashed", color = "darkgrey") +
   annotate("rect", xmin = -Inf, xmax = Inf, ymin = 0.2, ymax = 0.3, alpha = 0.3, fill = "lightgrey") +
   geom_hline(yintercept = 0.3, linetype = "dashed", color = "darkgrey") +
   scale_x_continuous("Beta", labels = as.character(all_metrics$beta), breaks = all_metrics$beta) +
-  labs(title = 'SAR Median vs Beta for Different Nu Values',
-       x = 'Beta',
+  scale_y_continuous(breaks = c(0,0.1,0.2,0.3,0.4,0.5,0.6)) +
+  labs(x = 'Beta',
        y = 'SAR Median',
+       # title = 'SAR Median vs Beta for Different Nu Values',
        color = 'Nu') +
-  theme_minimal()
+  theme_bw()
 
+print(p_grid)
+ggsave(filename = file.path(intervention_path, 'fig', 'grid-search.png'), plot = p_grid, width = 21, height = 7)
 
 ##### HEATMAP
 ggplot(all_metrics, aes(x = beta, y = nu, fill = SAR_median)) +
