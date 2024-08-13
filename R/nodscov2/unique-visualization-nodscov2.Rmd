@@ -9,9 +9,13 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
 library(ggplot2)
+library(ggpubr)
 library(lubridate)
 library(tidyr)
 library(visNetwork)
+# Sys.setlocale("LC_ALL", "English")
+Sys.setlocale("LC_ALL", "en_US.UTF-8")
+
 ```
 
 ```{r}
@@ -53,6 +57,7 @@ intervention_path <- file.path(out_path, 'intervention-analysis')
 load(file.path(loc_path, 'dev-localization-nodscov2.RData'))
 load(file.path(intervention_path, "parameters-admission-nodscov2.RData"))
 load(file.path(intervention_path, "scenario-3-unique-simulation-nodscov2.RData"))
+fig_sim_path <- file.path(intervention_path, 'fig', 'UNIQUE')
 ## TEMP
 admission <- admission %>% filter(id %in% admission_sim$id)
 
@@ -118,17 +123,17 @@ SEIR_colors <- c("Susceptible" = "green", "Exposed" = "pink", "Infectious" = "re
 
 ## PLOTS
 SEIR_n <- ggplot(counts_df, aes(x = time * 30 + begin_date, y = count, color = factor(status))) +
-  geom_line() +
+  geom_line(linewidth = 1) +
   labs(title = "SEIR",
        x = "Time",
        y = "Number of individuals",
        color = "Status") +
   labs(title='') +
   scale_color_manual(values = SEIR_colors) +
-  theme_bw() +
-  theme(axis.text.x=element_text(angle=45, hjust=1))
+  # theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  theme_bw()
 print(SEIR_n)
-ggsave(file = file.path(fig_sim_path, 'SEIR', paste0(id_sim, "-SEIR-n.png")), plot = SEIR_n, height = 3, width = 8)
+ggsave(file = file.path(fig_sim_path, 'SEIR', paste0(id_sim, "-SEIR-n.png")), plot = SEIR_n, height = 3, width = 9)
 
 SEIR_p <- ggplot(counts_df, aes(x = time * 30 + begin_date, y = proportion, color = factor(status))) +
   geom_line() +
@@ -138,8 +143,8 @@ SEIR_p <- ggplot(counts_df, aes(x = time * 30 + begin_date, y = proportion, colo
        color = "Status") +
   labs(title='') +
   scale_color_manual(values = SEIR_colors) +
-  theme_bw() +
-  theme(axis.text.x=element_text(angle=45, hjust=1))
+  # theme(axis.text.x=element_text(angle=45, hjust=1)) +
+  theme_bw()
 print(SEIR_p)
 ggsave(file = file.path(fig_sim_path, 'SEIR', paste0(id_sim, "-SEIR-p.png")), plot = SEIR_p, height = 4, width = 20)
 ```
@@ -164,7 +169,7 @@ VL_all <- ggplot(viral_load_over_time, aes(x = time, y = viral_load/volume, colo
   geom_line() +
   labs(title = "",
        x = "Time",
-       y = "Viral Load",
+       y = "Viral Load Concentration",
        color = "Room") +
   # theme(axis.text.x=element_text(angle=45, hjust=1)) +
   theme_bw() 
@@ -176,7 +181,7 @@ VL_no_room <- ggplot(viral_load_over_time %>% filter(!room %in% 1:17), aes(x = t
   geom_line() +
   labs(title = "",
        x = "Time",
-       y = "Viral Load",
+       y = "Viral Load Concentration",
        color = "Room") +
   # theme(axis.text.x=element_text(angle=45, hjust=1)) +
   theme_bw() 
@@ -191,11 +196,11 @@ ggsave(file = file.path(fig_sim_path, 'Viral-Load', paste0(id_sim, "-Viral-Load-
 distinct_rooms <- viral_load_over_time %>% distinct(room) %>% pull()
 
 for (id_room in distinct_rooms){
-  VL_room <- ggplot(viral_load_over_time %>% filter(room == id_room), aes(x = time, y = viral_load, color = factor(room))) +
+  VL_room <- ggplot(viral_load_over_time %>% filter(room == id_room), aes(x = time, y = viral_load/volume, color = factor(room))) +
     geom_line() +
     labs(title = paste0("Viral Load in Rooms Over Time - ", id_room),
          x = "Time",
-         y = "Viral Load",
+         y = "Viral Load Concentration",
          color = "Room") +
     # theme(axis.text.x=element_text(angle=45, hjust=1)) +
     theme_bw() 
@@ -210,18 +215,18 @@ distinct_rooms <- viral_load_over_time %>% distinct(room) %>% pull()
 ## FOR 1 DAY
 ```{r}
 dir.create(file.path(fig_sim_path, 'Viral-Load-Day'))
-## Arbitrary day -> 2020/05/20
-arbitrary_day <- date('2020-05-20')
+## Arbitrary day -> 2020/06/05
+arbitrary_day <- date('2020-06-05')
 
 for (id_room in distinct_rooms){
   VL_room <- ggplot(viral_load_over_time %>%
                       filter(room == id_room) %>%
                       filter(date(time) == arbitrary_day),
-                    aes(x = time, y = viral_load, color = factor(room))) +
+                    aes(x = time, y = viral_load/volume, color = factor(room))) +
     geom_line() +
-    labs(title = paste0("Viral Load in Rooms Over Time - ", id_room),
-         x = "Time",
-         y = "Viral Load",
+    labs(x = "Time",
+         y = "Viral Load Concentration",
+         title = paste0("Viral Load Concentration in Rooms Over Time - ", id_room),
          color = "Room") +
     # theme(axis.text.x=element_text(angle=45, hjust=1)) +
     theme_bw() 
@@ -231,6 +236,51 @@ for (id_room in distinct_rooms){
 }
 ```
 
+```{r}
+selected_rooms <- c('14', 'Nursing station', 'Paramedical Restroom')
+
+p1 <- ggplot(viral_load_over_time %>% filter(room == selected_rooms[1]) %>% 
+                      filter(date(time) == arbitrary_day),
+                    aes(x = time, y = viral_load/volume, color = factor(room))) +
+    geom_line(show.legend = FALSE) +
+    labs(x = "Time",
+         y = "Viral Load Concentration",
+         title = selected_rooms[1],
+         color = "Room") +
+    theme(
+      # axis.text.x=element_text(angle=45, hjust=1),
+      legend.text=element_blank()) +
+    theme_bw() 
+p2 <- ggplot(viral_load_over_time %>% filter(room == selected_rooms[2]) %>% 
+                      filter(date(time) == arbitrary_day),
+                    aes(x = time, y = viral_load/volume, color = factor(room))) +
+    geom_line(show.legend = FALSE) +
+    labs(x = "Time",
+         y = "Viral Load Concentration",
+         title = selected_rooms[2],
+         color = "Room") +
+    theme(
+      # axis.text.x=element_text(angle=45, hjust=1),
+      legend.text=element_blank()) +
+    theme_bw() 
+
+p3 <- ggplot(viral_load_over_time %>% filter(room == selected_rooms[3]) %>% 
+                      filter(date(time) == arbitrary_day),
+                    aes(x = time, y = viral_load/volume, color = factor(room))) +
+    geom_line(show.legend = FALSE) +
+    labs(x = "Time",
+         y = "Viral Load Concentration",
+         title = selected_rooms[3],
+         color = "Room") +
+    theme(
+      # axis.text.x=element_text(angle=45, hjust=1),
+      legend.text=element_blank()) +
+    theme_bw() 
+
+print(p3)
+p_viral <- cowplot::plot_grid(p1,p2,p3, labels = c("A ", "B ", "C "), nrow = 3, ncol = 1)
+ggsave(filename = file.path(fig_sim_path, 'fig-selected-viral-load-day.png'), plot = p_viral, height = 12, width = 20)
+```
 
 
 
@@ -299,7 +349,8 @@ cat_paramedical <- c("nurse", "student nurse", "aux nurse")
 cat_medical <- c("physician", "ext physician", "reeducation staff", "other")
 id_paramedical <- admission %>% filter(id %in% HCW_interacting_ids & cat %in% cat_paramedical) %>% pull(id)
 id_medical <- admission %>% filter(id %in% HCW_interacting_ids & cat %in% cat_medical) %>% pull(id)
-id_patient <- admission %>% filter(status == "PA") %>% filter(id %in% id_interacting) %>% pull(id)
+# id_patient <- admission %>% filter(status == "PA") %>% filter(id %in% id_interacting) %>% pull(id)
+id_patient <- admission_sim %>% filter(info == 0) %>% filter(id %in% id_interacting) %>% pull(id)
 id_index <- status_sim %>% filter(inf_by == "INDEX") %>% pull(id)
 
 ## linelist object
@@ -310,7 +361,13 @@ linelist <- linelist %>%
   mutate(type = ifelse(id %in% id_paramedical , "PARAMEDICAL", type)) %>%
   mutate(type = ifelse(id %in% id_patient , "PATIENT", type)) %>%
   mutate(type = ifelse(id == id_index, "INDEX", type)) %>%
-  mutate(info = ifelse(info == 1, "HCW", "PATIENT"))
+  mutate(info = ifelse(info == 1, "HCW", "PATIENT")) %>% 
+  mutate(room = case_when(
+    type == 'MEDICAL' ~ 19,
+    type == 'PARAMEDICAL' ~ 20,
+    type == 'PATIENT' ~ room
+  )) %>% 
+  mutate(cat = ifelse(is.na(cat), 'patient', cat))
 
 
 env_linelist <- data.frame(id = paste0("ENVIRONMENT-",rooms %>% distinct(id_room, .keep_all = TRUE) %>% pull(id_room)),
@@ -358,7 +415,7 @@ sim_network <- vis_epicontacts(x,
                 node_shape = "type",
                 shape = c(`PARAMEDICAL` = "circle", `MEDICAL` = "circle",  `PATIENT` = "circle", `ROOM` = "bed", `INDEX` = "circle"),
                 thin = TRUE,
-                selector = TRUE
+                selector = T
                 )
 sim_network
 
