@@ -172,7 +172,13 @@ VL_all <- ggplot(viral_load_over_time, aes(x = time, y = viral_load/volume, colo
        y = "Viral Load Concentration",
        color = "Room") +
   # theme(axis.text.x=element_text(angle=45, hjust=1)) +
-  theme_bw() 
+  theme_bw() +
+  theme(
+    plot.title = element_text(size = 25, hjust = 0.5),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20))
 print(VL_all)
 ggsave(file = file.path(fig_sim_path, 'Viral-Load', paste0(id_sim, "-Viral-Load-ALL.png")), plot = VL_all, height = 4, width = 20)
 
@@ -184,7 +190,13 @@ VL_no_room <- ggplot(viral_load_over_time %>% filter(!room %in% 1:17), aes(x = t
        y = "Viral Load Concentration",
        color = "Room") +
   # theme(axis.text.x=element_text(angle=45, hjust=1)) +
-  theme_bw() 
+  theme_bw() +
+  theme(
+    plot.title = element_text(size = 25, hjust = 0.5), 
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20))
 
 print(VL_no_room)
 ggsave(file = file.path(fig_sim_path, 'Viral-Load', paste0(id_sim, "-Viral-Load-NO-ROOMS.png")), plot = VL_no_room, height = 4, width = 20)
@@ -203,7 +215,14 @@ for (id_room in distinct_rooms){
          y = "Viral Load Concentration",
          color = "Room") +
     # theme(axis.text.x=element_text(angle=45, hjust=1)) +
-    theme_bw() 
+    theme_bw() +
+    theme(
+    plot.title = element_text(size = 20, hjust = 0.5),
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20),
+    legend.position = 'NONE')
   print(VL_room)
   ggsave(file = file.path(fig_sim_path, "Viral-Load", paste0(id_sim, "-Viral-Load-Room-", id_room, ".png")), plot = VL_room, height = 4, width = 20)
 
@@ -229,7 +248,13 @@ for (id_room in distinct_rooms){
          title = paste0("Viral Load Concentration in Rooms Over Time - ", id_room),
          color = "Room") +
     # theme(axis.text.x=element_text(angle=45, hjust=1)) +
-    theme_bw() 
+    theme_bw() +
+    theme(
+    plot.title = element_text(size = 25, hjust = 0.5), #use extrafont package if the font is not installed locally
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 20))
   print(VL_room)
   ggsave(file = file.path(fig_sim_path, 'Viral-Load-Day', paste0(id_sim, "-Viral-Load-Day-Room-", id_room, ".png")), plot = VL_room, height = 4, width = 20)
 
