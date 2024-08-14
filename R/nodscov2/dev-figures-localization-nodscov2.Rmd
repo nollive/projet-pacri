@@ -409,8 +409,8 @@ p1 <- ggplot(paths %>% filter(id == selected_individuals[1]), aes(x = time * 30 
       plot.title = element_text(size = 25, hjust = 0.5, family = "Arial monospaced for SAP"), #use extrafont package if the font is not installed locally
       axis.text.x = element_blank(),
       axis.title.x = element_blank(), 
-      axis.text = element_text(size = 15, family = "Arial monospaced for SAP"),
-      axis.title = element_text(size = 20, family = "Arial monospaced for SAP"),
+      axis.text = element_text(size = 20, family = "Arial monospaced for SAP"),
+      axis.title = element_text(size = 25, family = "Arial monospaced for SAP"),
       legend.text = element_text(size = 20, family = "Arial monospaced for SAP"),
       legend.title = element_text(size = 20, family = "Arial monospaced for SAP"),
       legend.position="none") 
@@ -430,8 +430,8 @@ p2 <- ggplot(paths %>% filter(id == selected_individuals[2]), aes(x = time * 30 
       plot.title = element_text(size = 25, hjust = 0.5, family = "Arial monospaced for SAP"), #use extrafont package if the font is not installed locally
       axis.text.x = element_blank(),
       axis.title.x = element_blank(), 
-      axis.text = element_text(size = 15, family = "Arial monospaced for SAP"),
-      axis.title = element_text(size = 20, family = "Arial monospaced for SAP"),
+      axis.text = element_text(size = 20, family = "Arial monospaced for SAP"),
+      axis.title = element_text(size = 25, family = "Arial monospaced for SAP"),
       legend.text = element_text(size = 20, family = "Arial monospaced for SAP"),
       legend.title = element_text(size = 20, family = "Arial monospaced for SAP"),
       legend.position="none") 
@@ -447,7 +447,7 @@ p3 <- ggplot(paths %>% filter(id == selected_individuals[3]), aes(x = time * 30 
     theme(
       plot.title = element_text(size = 25, hjust = 0.5, family = "Arial monospaced for SAP"), #use extrafont package if the font is not installed locally
       axis.text = element_text(size = 20, family = "Arial monospaced for SAP"),
-      axis.title = element_text(size = 20, family = "Arial monospaced for SAP"),
+      axis.title = element_text(size = 25, family = "Arial monospaced for SAP"),
       legend.text = element_text(size = 20, family = "Arial monospaced for SAP"),
       legend.title = element_text(size = 20, family = "Arial monospaced for SAP"),
       legend.position="none") 
