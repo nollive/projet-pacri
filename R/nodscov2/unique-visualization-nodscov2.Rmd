@@ -147,6 +147,7 @@ SEIR_p <- ggplot(counts_df, aes(x = time * 30 + begin_date, y = proportion, colo
   theme_bw()
 print(SEIR_p)
 ggsave(file = file.path(fig_sim_path, 'SEIR', paste0(id_sim, "-SEIR-p.png")), plot = SEIR_p, height = 4, width = 20)
+ggsave(file = file.path(fig_sim_path, 'SEIR', paste0(id_sim, "-SEIR-n-slide.png")), plot = SEIR_n, height = 6, width = 6)
 ```
 
 

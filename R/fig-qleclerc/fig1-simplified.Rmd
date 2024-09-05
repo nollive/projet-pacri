@@ -461,5 +461,7 @@ plot_grid(pa,
 
 #ggsave(file.path(wd, "..", "..", "Figures", "fig1-ibird.png"), height = 12, width = 10)
 ggsave(file.path(wd, "..", "..", "out", "fig", "fig1-nodscov2-RP-ICU.png"), height = 12, width = 12)
+
+ggsave(file.path(wd, "..", "..", "out", "fig", "fig1-nodscov2-RP-ICU-slides-ratio.png"), height = 10, width = 17.5)
 ```
 
