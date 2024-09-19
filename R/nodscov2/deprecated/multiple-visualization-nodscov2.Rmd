@@ -1,0 +1,372 @@
+---
+title: "dev-visualization"
+author: "Olivier GAUFRÈS"
+date: "2024-06-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(tidyr)
+library(visNetwork)
+library(ggborderline)
+```
+
+```{r}
+wd <- getwd()
+knitr::opts_chunk$set(root.dir = wd)
+out_path <- file.path(wd,'..','..','out')
+loc_path <- file.path(out_path, "loc-nodscov2")
+sensibility_path <- file.path(out_path,'sensibility-analysis')
+
+## BETA CALCULATED W/ MEAN (c.f. Q. LECLERC ET AL. 2023 PREPRINT)
+# id_sim <- "sim-beta-mean"
+# beta_type <- "beta-mean"
+
+## BETA CALCULATED W/ MEDIAN (c.f. Q. LECLERC ET AL. 2023 PREPRINT)
+id_sim <- "sim-beta-median"
+beta_type <- "beta-median"
+
+# # BETA MANUALLY SELECTED
+# beta <- '2.5'
+# id_sim <- paste0("sim-beta-",beta)
+# beta_type <- paste0("beta-", beta)
+
+fig_path <- file.path(sensibility_path, id_sim, paste0(id_sim,"-fig"))
+
+if (!dir.exists(fig_path)) {
+  dir.create(fig_path, recursive = TRUE)
+}
+```
+
+## LOAD SIMULATIONS DATA
+```{r Load data}
+load(file.path(loc_path, 'dev-localization-nodscov2.RData'))
+load(file.path(sensibility_path, id_sim, paste0('parameters-model-', beta_type, '.RData')))
+```
+
+## TRUNCATED DATA
+```{r}
+new_begin_date <- begin_date + (5*60*60) ## OFFSET TO START THE DAY AT 12AM
+new_end_date <- new_begin_date + (24*60*60)
+print(new_end_date - new_begin_date)
+t_begin <- 5*60*2 ## OFFSET t
+t_end <- (t_begin + 24*60*2) - 1
+new_n_subdivisions <- (t_end-t_begin +1)*n_days
+```
+## SIM DATA
+```{r}
+sim_path <- file.path(sensibility_path, paste0('sim-', beta_type), 'results')
+rdata_files <- list.files(sim_path, pattern = "^sim-.*\\.RData$", full.names = TRUE)
+
+## Lists
+sim_C <- list()
+sim_E <- list()
+sim_C_E <- list()
+
+
+load_rdata_to_list <- function(file) {
+  load(file)
+  file_name <- basename(file)
+  sim_id <- sub("sim-(\\d+)-.*", "\\1", file_name)
+  sim_type <- sub("sim-\\d+-(.*)\\.RData", "\\1", file_name)
+  object_name <- paste0("sim_", sim_id, "_", sim_type)
+  ## Put in list according to sim_type
+  if (sim_type == "C") {
+    sim_C[[sim_id]] <<- get(object_name)
+  } else if (sim_type == "E") {
+    sim_E[[sim_id]] <<- get(object_name)
+  } else if (sim_type == "CE") {
+    sim_C_E[[sim_id]] <<- get(object_name)
+  }
+}
+## Apply function to load and order the df into lists
+invisible(lapply(rdata_files, load_rdata_to_list))
+```
+
+
+## IDS
+```{r}
+id_interacting <- do.call(rbind,truncated_interaction) %>%
+  pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>%
+  distinct(individual) %>%
+  pull()
+id_total <- admission %>% distinct(id) %>% pull()
+id_not_interacting <- setdiff(id_total, id_interacting)
+```
+
+
+## COUNTS DATAFRAMES
+```{r}
+## Number of infected over time
+n_individual <- length(id_interacting)
+n_subdivisions <- new_n_subdivisions
+
+SEIR_counts <- function(status_sim, n_subdivisions, n_individual) {
+  ## Time steps
+  times <- seq(1, n_subdivisions, 100)
+  ##DF
+  counts_df <- data.frame(
+    Susceptible = colSums(outer(status_sim$t_inf, times, function(x, y) x == -1 | x > y)),
+    Exposed = colSums(outer(status_sim$t_inf, times, function(x, y) x <= y) & outer(status_sim$t_incub, times, function(x, y) x > y)),
+    Infectious = colSums(outer(status_sim$t_incub, times, function(x, y) x <= y) & outer(status_sim$t_recover, times, function(x, y) x > y)),
+    Recovered = colSums(outer(status_sim$t_recover, times, function(x, y) x <= y) & outer(status_sim$t_inf, times, function(x, y) x != -1)),
+    time = times
+  )
+  ## Pivot for easier plot
+  counts_df <- counts_df %>%
+    pivot_longer(cols = c("Susceptible", "Exposed", "Infectious", "Recovered"), names_to = "status", values_to = "count") %>%
+    mutate(proportion = count * 100 / n_individual)
+  ## ## S E I R as factor 
+  counts_df$status <- factor(counts_df$status, levels = c("Susceptible", "Exposed", "Infectious", "Recovered"))
+  
+  return(counts_df)
+}
+
+SEIR_to_list <- function(sim_list, n_subdivisions, n_individual) {
+  lapply(sim_list, function(status_sim) {
+    SEIR_counts(status_sim, n_subdivisions, n_individual)
+  })
+}
+
+## 
+counts_C <- SEIR_to_list(sim_C, n_subdivisions, n_individual)
+counts_E <- SEIR_to_list(sim_E, n_subdivisions, n_individual)
+counts_C_E <- SEIR_to_list(sim_C_E, n_subdivisions, n_individual)
+```
+
+
+## Compute the median counts & min/max
+```{r}
+SEIR_median_counts <- function(sim_list) {
+  combined_counts <- do.call(rbind, sim_list)
+  median_counts <- combined_counts %>%
+    group_by(time, status) %>%
+    summarize(count = median(count), proportion = median(proportion), .groups = 'drop')
+  
+  return(median_counts)
+}
+
+SEIR_min_counts <- function(sim_list) {
+  combined_counts <- do.call(rbind, sim_list)
+  min_counts <- combined_counts %>%
+    group_by(time, status) %>%
+    summarize(count = min(count), proportion = min(proportion), .groups = 'drop')
+  
+  return(min_counts)
+}
+
+SEIR_max_counts <- function(sim_list) {
+  combined_counts <- do.call(rbind, sim_list)
+  max_counts <- combined_counts %>%
+    group_by(time, status) %>%
+    summarize(count = max(count), proportion = max(proportion), .groups = 'drop')
+  
+  return(max_counts)
+}
+
+median_counts_C <- SEIR_median_counts(counts_C)
+median_counts_E <- SEIR_median_counts(counts_E)
+median_counts_C_E <- SEIR_median_counts(counts_C_E)
+
+min_counts_C <- SEIR_min_counts(counts_C)
+min_counts_E <- SEIR_min_counts(counts_E)
+min_counts_C_E <- SEIR_min_counts(counts_C_E)
+
+max_counts_C <- SEIR_max_counts(counts_C)
+max_counts_E <- SEIR_max_counts(counts_E)
+max_counts_C_E <- SEIR_max_counts(counts_C_E)
+```
+
+
+
+## SEIR: PLOTS
+```{r}
+SEIR_colors <- c("Susceptible" = "green", "Exposed" = "pink", "Infectious" = "red", "Recovered" = "blue")
+
+
+plot_SEIR <- function(counts_list, median_counts, min_counts, max_counts, title, fig_path, id_sim) {
+  n_sim <- length(counts_list)
+  
+  ## SEIR: NUMBER OF INDIVIDUAL
+  SEIR_n <- ggplot() + 
+    labs(title = paste("SEIR -", title),
+         x = "Time",
+         y = "Number of individuals",
+         color = "Status") +
+    scale_color_manual(values = SEIR_colors) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          plot.title = element_text(size = 16, hjust = 0.5),
+          axis.text = element_text(size = 12),
+          axis.title = element_text(size = 14),
+          legend.text = element_text(size = 12),
+          legend.title = element_text(size = 14))
+  
+  for (i in 1:n_sim){
+    SEIR_n <- SEIR_n + 
+      geom_line(data = counts_list[[i]],
+              aes(x = time * 30 + begin_date, y = count, color = status),
+              alpha = 0.5,
+              linewidth = 0.3,
+              linetype = "solid")
+  }
+  print(SEIR_n)
+  ggsave(file = file.path(fig_path, paste0(id_sim, "-SEIR-n-", title, ".png")), plot = SEIR_n, height = 30, width = 40)
+  
+  ## SEIR: NUMBER WITH MEDIAN AND MIN/MAX
+  SEIR_n_t <- SEIR_n +
+    geom_borderline(data = median_counts,
+                    aes(x = time * 30 + begin_date, y = count , color = status),
+                    linewidth = 2,
+                    linetype = "solid",
+                    bordercolour = "white") +
+    # geom_line(data = median_counts,
+    #                 aes(x = time * 30 + begin_date, y = count , color = status),
+    #                 linewidth = 2,
+    #                 linetype = "solid")+
+    geom_line(data = min_counts,
+              aes(x = time * 30 + begin_date, y = count, color = status),
+              linewidth = 0.5,
+              linetype = "solid") +
+    geom_line(data = max_counts,
+              aes(x = time * 30 + begin_date, y = count, color = status),
+              linewidth = 0.5,
+              linetype = "solid")
+  print(SEIR_n_t)
+  ggsave(file = file.path(fig_path, paste0(id_sim, "-SEIR-n-total", title, ".png")), plot = SEIR_n_t, height = 30, width = 40)
+  
+  ## SEIR: PROPORTION OF INDIVIDUAL
+  SEIR_p <- ggplot() + 
+    labs(title = paste("SEIR -", title),
+         x = "Time",
+         y = "Proportion of individuals",
+         color = "Status") +
+    scale_color_manual(values = SEIR_colors) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          plot.title = element_text(size = 16, hjust = 0.5),
+          axis.text = element_text(size = 12),
+          axis.title = element_text(size = 14),
+          legend.text = element_text(size = 12),
+          legend.title = element_text(size = 14))
+  
+  for (i in 1:n_sim){
+    SEIR_p <- SEIR_p + 
+      geom_line(data = counts_list[[i]],
+              aes(x = time * 30 + begin_date, y = proportion, color = status),
+              alpha = 0.5,
+              linewidth = 0.3,
+              linetype = "solid")
+  }
+  print(SEIR_p)
+  ggsave(file = file.path(fig_path, paste0(id_sim, "-SEIR-p-", title, ".png")), plot = SEIR_p, height = 30, width = 40)
+  
+  ## SEIR : PROPORTION WITH MEDIAN AND MIN/MAX
+  SEIR_p_t <- SEIR_p +
+    geom_borderline(data = median_counts,
+                    aes(x = time * 30 + begin_date, y = proportion , color = status),
+                    linewidth = 2,
+                    linetype = "solid",
+                    bordercolour = "white") +
+    # geom_line(data = median_counts,
+    #           aes(x = time * 30 + begin_date, y = proportion , color = status),
+    #           linewidth = 2,
+    #           linetype = "solid") +
+    geom_line(data = min_counts,
+              aes(x = time * 30 + begin_date, y = proportion, color = status),
+              linewidth = 0.5,
+              linetype = "solid") +
+    geom_line(data = max_counts,
+              aes(x = time * 30 + begin_date, y = proportion, color = status),
+              linewidth = 0.5,
+              linetype = "solid")
+  print(SEIR_p_t)
+  ggsave(file = file.path(fig_path, paste0(id_sim, "-SEIR-p-total", title, ".png")), plot = SEIR_p_t, height = 30, width = 40)
+}
+
+
+plot_SEIR(counts_C,
+          median_counts_C,
+          min_counts_C,
+          max_counts_C,
+          paste0("Contact - \u03b2 = ", substr(beta,1,4), ' (', beta_type, ')'),
+          fig_path,
+          id_sim)
+
+plot_SEIR(counts_E,
+          median_counts_E,
+          min_counts_E,
+          max_counts_E,
+          paste0("Environment - \u03b2 = ", substr(beta,1,4), ' (', beta_type, ')'),
+          fig_path,
+          id_sim)
+
+plot_SEIR(counts_C_E,
+          median_counts_C_E,
+          min_counts_C_E,
+          max_counts_C_E,
+          paste0("Contact and Environment - \u03b2 = ", substr(beta,1,4), ' (', beta_type, ')'),
+          fig_path,
+          id_sim)
+
+```
+
+## C+E for report
+```{r}
+SEIR_colors <- c("Susceptible" = "green", "Exposed" = "pink", "Infectious" = "red", "Recovered" = "blue")
+n_sim <- length(counts_C_E)
+  
+  ## SEIR: NUMBER OF INDIVIDUAL
+  SEIR_n <- ggplot() + 
+    labs(x = "Time",
+         y = "Number of individuals",
+         color = "Status") +
+    scale_color_manual(values = SEIR_colors) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          plot.title = element_text(size = 16, hjust = 0.5),
+          axis.text = element_text(size = 12),
+          axis.title = element_text(size = 14),
+          legend.text = element_text(size = 12),
+          legend.title = element_text(size = 14))
+  
+  for (i in 1:n_sim){
+    SEIR_n <- SEIR_n + 
+      geom_line(data = counts_C_E[[i]],
+              aes(x = time * 30 + begin_date, y = count, color = status),
+              alpha = 0.5,
+              linewidth = 0.3,
+              linetype = "solid")
+  }
+  SEIR_n_t <- SEIR_n +
+    geom_borderline(data = median_counts_C_E,
+                    aes(x = time * 30 + begin_date, y = count , color = status),
+                    linewidth = 2,
+                    linetype = "solid",
+                    bordercolour = "white") +
+    # geom_line(data = median_counts_C_E,
+    #                 aes(x = time * 30 + begin_date, y = count , color = status),
+    #                 linewidth = 2,
+    #                 linetype = "solid")+
+    geom_line(data = min_counts_C_E,
+              aes(x = time * 30 + begin_date, y = count, color = status),
+              linewidth = 0.5,
+              linetype = "solid") +
+    geom_line(data = max_counts_C_E,
+              aes(x = time * 30 + begin_date, y = count, color = status),
+              linewidth = 0.5,
+              linetype = "solid")
+  print(SEIR_n_t)
+  ggsave(file = file.path(fig_path, paste0(id_sim, "-SEIR-n-total-report", ".png")), plot = SEIR_n, height = 15, width = 20)
+```
+
+
+
+
+
+
+
