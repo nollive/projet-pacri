@@ -5,8 +5,8 @@ wd <- getwd()
 
 args <- commandArgs(trailingOnly = TRUE)
 
-load(file.path("/pasteur/appa/homes/ogaufres/intervention-analysis/RData/", 'parameters-admission-nodscov2.RData'))
-sourceCpp("/pasteur/appa/homes/ogaufres/intervention-analysis/cpp/dev-sensibility-analysis.cpp")
+load(file.path("/pasteur/appa/homes/ogaufres/scenarios-analysis/RData/", 'parameters-admission-nodscov2.RData'))
+sourceCpp("/pasteur/appa/homes/ogaufres/scenarios-analysis/cpp/dev-sensibility-analysis.cpp")
 
 ## EDIT BETA AND NU
 sim_id <- as.character(args[1])
@@ -48,7 +48,7 @@ result <- simulation(global_interaction = global_interaction,
 
 ## assign file name
 assign(paste0("sim_", beta_type, '_', nu_type, "_",  sim_id), result)
-save_path <- file.path(wd, "out", 'intervention-analysis', 'out', paste0('sim_', beta_type, '_', nu_type ), 'results')
+save_path <- file.path(wd, "out", 'scenarios-analysis', 'out', paste0('sim_', beta_type, '_', nu_type ), 'results')
 dir.create(save_path, recursive = T, showWarnings = F)
 
 # Save simulation results
