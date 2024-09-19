@@ -14,8 +14,7 @@ library(lubridate)
 library(tidyr)
 library(visNetwork)
 # Sys.setlocale("LC_ALL", "English")
-Sys.setlocale("LC_ALL", "en_US.UTF-8")
-
+Sys.setlocale("LC_ALL", "en_US.UTF-8")Ye
 ```
 
 ```{r}
@@ -41,28 +40,14 @@ if (!dir.exists(fig_sim_path)) {
 
 ## TEST
 ```{r}
-# id_sim <- "dev-test-endless-day"
-# id_sim_path <- file.path(sim_nodscov2_path, id_sim)
-# fig_sim_path <- file.path(id_sim_path, 'UNIQUE', paste0(id_sim,"-fig"))
-# 
-# if (!dir.exists(fig_sim_path)) {
-#   dir.create(fig_sim_path, recursive = TRUE)
-# }
-# 
-# load(file.path(id_sim_path, paste0(id_sim, "-", "unique-simulation-nodscov2.RData")))
-
-
-## intervention analysis
-intervention_path <- file.path(out_path, 'intervention-analysis')
+## scenarios analysis
+id_sim <- "scenario-unique"
+scenarios_path <- file.path(out_path, 'scenarios-analysis')
 load(file.path(loc_path, 'dev-localization-nodscov2.RData'))
-load(file.path(intervention_path, "parameters-admission-nodscov2.RData"))
-load(file.path(intervention_path, "scenario-3-unique-simulation-nodscov2.RData"))
-fig_sim_path <- file.path(intervention_path, 'fig', 'UNIQUE')
-## TEMP
-admission <- admission %>% filter(id %in% admission_sim$id)
+load(file.path(scenarios_path, "parameters-admission-nodscov2.RData"))
+load(file.path(scenarios_path, "scenario-3-unique-simulation-nodscov2.RData"))
+fig_sim_path <- file.path(scenarios_path, 'fig', 'UNIQUE')
 
-# global_interaction <- rep(truncated_interaction, n_days)
-# global_localization <- rep(truncated_localization, n_days)
 new_begin_date <- begin_date + t_begin*30 ## OFFSET TO START THE DAY AT 12AM
 new_end_date <- new_begin_date + new_n_subdivisions*30
 print(new_end_date - new_begin_date)
@@ -448,3 +433,20 @@ sim_network
 
 visSave(sim_network, file = file.path(fig_sim_path, paste0("infection-network.html")), selfcontained = T)
 ```
+
+
+
+
+
+<!-- ## TEST -->
+<!-- ```{r} -->
+<!-- # id_sim <- "dev-test-endless-day" -->
+<!-- # id_sim_path <- file.path(sim_nodscov2_path, id_sim) -->
+<!-- # fig_sim_path <- file.path(id_sim_path, 'UNIQUE', paste0(id_sim,"-fig")) -->
+<!-- #  -->
+<!-- # if (!dir.exists(fig_sim_path)) { -->
+<!-- #   dir.create(fig_sim_path, recursive = TRUE) -->
+<!-- # } -->
+<!-- #  -->
+<!-- # load(file.path(id_sim_path, paste0(id_sim, "-", "unique-simulation-nodscov2.RData"))) -->
+<!-- ``` -->

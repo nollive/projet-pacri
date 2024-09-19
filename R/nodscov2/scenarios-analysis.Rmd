@@ -32,9 +32,6 @@ source(file.path(wd, 'scenarios-analysis_fun.R'))
 load(file.path(loc_path, 'dev-localization-nodscov2.RData'))
 load(file.path(scenarios_path, "parameters-admission-nodscov2.RData"))
 
-##TO FIX IN loc-to-RData (rerun to update parameters.RData)
-# admission <- admission %>% filter(id %in% admission_sim$id) ## DONE
-
 ## CATEGORY GROUPING INTO TYPE
 cat_paramedical <- c("nurse", "student nurse", "aux nurse")
 cat_medical <- c("physician", "ext physician", "reeducation staff", "other")
