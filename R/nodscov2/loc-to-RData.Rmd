@@ -12,8 +12,9 @@ library(dplyr)
 library(Rcpp)
 library(tidyr)
 library(purrr)
+```
 
-
+```{r}
 ##PATHS
 wd <- getwd()
 out_path <- file.path(wd,'..','..', 'out')
@@ -21,7 +22,7 @@ out_path <- file.path(wd,'..','..', 'out')
 loc_path <- file.path(out_path,'loc-nodscov2','dev-localization-nodscov2.RData')
 sensibility_path <- file.path(out_path, 'sensibility-analysis')
 pathogen_path <- file.path(out_path, 'pathogen-analysis')
-intervention_path <- file.path(out_path, 'intervention-analysis')
+scenarios_path <- file.path(out_path, 'scenarios-analysis')
 ```
 
 
@@ -202,14 +203,14 @@ deltat <- dt/tau
 env_threshold <- 0 # Quanta threshold above which the environment is infectious
 
 ## BETA AND NU COUPLES (tested to give the same 20% SAR)
-beta <- 1 * 24# Transmission rate for close contact interaction /h
-nu <- 1 * 24 # (10 quanta/h)
+beta <- 3/2 * 24# Transmission rate for close contact interaction /h
+nu <- 12 * 24 # (12 quanta/h)
 ```
 
 
 ```{r}
 ## MIGHT TAKE A WHILE SAVING GLOBAL OBJECT FOR HIGH n_days 
-save_path <- file.path(intervention_path, "parameters-admission-nodscov2.RData")
+save_path <- file.path(scenarios_path, "parameters-admission-nodscov2-test.RData")
 
 save(global_interaction,
      global_data,
@@ -227,9 +228,10 @@ save(global_interaction,
      n_days,
      t_begin,
      t_end,
+     new_begin_date,
+     new_end_date,
      file = save_path)
 ```
-
 
 ## CP THE $ANALYSIS/FOLDER TO CLUSTER/OUT
 
@@ -251,9 +253,9 @@ sensibility_path <- file.path(wd,'..','..', 'out', 'sensibility-analysis')
 RData_path <- file.path(sensibility_path, paste0('sim-beta-', beta), paste0('parameters-model-beta-', beta, '.RData'))
 cpp_path <- file.path(wd, '..', '..', 'cpp', 'nodscov2', 'dev-sensibility-analysis.cpp')
 
-## intervention analysis
-intervention_path <- file.path(out_path, 'intervention-analysis')
-RData_path <-  file.path(intervention_path, "parameters-admission-nodscov2.RData")
+## scenarios analysis
+scenarios_path <- file.path(out_path, 'scenarios-analysis')
+RData_path <-  file.path(scenarios_path, "parameters-admission-nodscov2.RData")
 
 
 ####################
@@ -261,8 +263,6 @@ RData_path <-  file.path(intervention_path, "parameters-admission-nodscov2.RData
 ####################
 load(RData_path)
 sourceCpp(cpp_path)
-##TO FIX IN loc-to-RData (rerun to update parameters.RData)
-admission <- admission %>% filter(id %in% admission_sim$id)
 
 ################################
 ## CREATE ENDLESS DAY OBJECTS ##
@@ -318,7 +318,7 @@ sourceCpp(file.path(cpp_path, 'dev-model-nodscov2.cpp'))
 #                      env_threshold = env_threshold,
 #                      dt = dt)
 
-## Intervention analysis (no replicated truncated data, new patients)
+## Scenarios analysis (no replicated truncated data, new patients)
 beta = 3/4
 nu = 12
 data_sim <- simulation(global_interaction = global_interaction,
@@ -342,7 +342,7 @@ if (!dir.exists(id_sim_path)) {
   dir.create(id_sim_path, recursive = TRUE)
 }
 
-## SAVE FOR INTERVENTION ANALYSIS SINGLE SIMULATION
+## SAVE FOR SCENARIOS ANALYSIS SINGLE SIMULATION
 save(admission,
      admission_sim,
      beta,
@@ -356,7 +356,7 @@ save(admission,
      t_begin,
      t_end,
      data_sim,
-     file = file.path(intervention_path, "scenario-3-unique-simulation-nodscov2.RData")
+     file = file.path(scenarios_path, "scenario-3-unique-simulation-nodscov2.RData")
      )
 
 save(truncated_interaction,
