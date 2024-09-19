@@ -210,7 +210,7 @@ nu <- 12 * 24 # (12 quanta/h)
 
 ```{r}
 ## MIGHT TAKE A WHILE SAVING GLOBAL OBJECT FOR HIGH n_days 
-save_path <- file.path(scenarios_path, "parameters-admission-nodscov2-test.RData")
+save_path <- file.path(scenarios_path, "parameters-admission-nodscov2.RData")
 
 save(global_interaction,
      global_data,
