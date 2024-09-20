@@ -26,15 +26,6 @@ cpp_path <-  file.path(wd,"..", "..", "cpp")
 cpp_model_path <- file.path(cpp_path,"nodscov2")
 sim_nodscov2_path <- file.path(out_path, "sim-nodscov2")
 loc_path <- file.path(out_path,'loc-nodscov2')
-
-id_sim <- "01"
-id_sim_path <- file.path(sim_nodscov2_path, id_sim)
-fig_sim_path <- file.path(id_sim_path, paste0(id_sim,"-fig"))
-
-
-if (!dir.exists(fig_sim_path)) {
-  dir.create(fig_sim_path, recursive = TRUE)
-}
 ```
 
 
@@ -48,9 +39,8 @@ load(file.path(scenarios_path, "parameters-admission-nodscov2.RData"))
 load(file.path(scenarios_path, "scenario-3-unique-simulation-nodscov2.RData"))
 fig_sim_path <- file.path(scenarios_path, 'fig', 'UNIQUE')
 
-new_begin_date <- begin_date + t_begin*30 ## OFFSET TO START THE DAY AT 12AM
-new_end_date <- new_begin_date + new_n_subdivisions*30
-print(new_end_date - new_begin_date)
+# new_begin_date <- begin_date + t_begin*30 ## OFFSET TO START THE DAY AT 12AM
+# new_end_date <- new_begin_date + new_n_subdivisions*30
 ```
 
 ## REMOVE INDIVUDUALS NOT INTERACTING DURING THE SIMULATION
