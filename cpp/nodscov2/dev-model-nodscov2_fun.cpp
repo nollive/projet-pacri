@@ -395,6 +395,7 @@ Rcpp::NumericVector Lambda_e (
     const Rcpp::DataFrame& environment_ti,
     const double& B,
     const double& env_threshold,
+    const String& env_model,
     const double& deltat
 ) {
     Rcpp::NumericVector lambda_e_ti (localization_ti.size(), 0);
@@ -424,11 +425,19 @@ Rcpp::NumericVector Lambda_e (
                 }
             }
             // VIRAL LOAD threshold
-            if (environment[index_room] > env_threshold){
-                lambda_e_ti[j] = individual_weight * (B/rooms_volume[index_room]) * deltat * environment[index_room];
-            } else{
-                lambda_e_ti[j] = 0;
+            Rcpp::NumericVector env_contrib {0,0};
+            if (env_model == "linear") {
+              env_contrib[1] = individual_weight * (B/rooms_volume[index_room]) * deltat * (environment[index_room] - env_threshold);
             }
+            
+            if (env_model == "exponential") {
+              env_contrib[1] = individual_weight * (B/rooms_volume[index_room]) * deltat * expm1(environment[index_room] - env_threshold);
+            }
+            
+            if (env_model== "log") {
+              env_contrib[1] = individual_weight * (B/rooms_volume[index_room]) * deltat * log10(environment[index_room] / env_threshold);
+            }
+            lambda_e_ti[j] = max(env_contrib);
         }  
         return lambda_e_ti;  
     };

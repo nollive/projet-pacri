@@ -6,18 +6,22 @@ date: "2024-09-19"
 
 ```{r}
 #### LIBRARIES
-## DATA MANAGEMENT
+## Data management
 library(dplyr)
 library(tidyr)
 library(purrr)
 library(data.table)
 library(lubridate)
-## PLOTS
+## Plots
 library(ggplot2)
 library(cowplot)
 library(viridis)
 library(ggpubr)
 library(ggborderline)
+
+## Suppporting functions, dictionaries and variables
+source("scenarios-figures-supp.R")
+source('scenarios-analysis_fun.R')
 
 ## change langage to english for plots (uncomment English if using Windows)
 ## WINDOWS
@@ -28,23 +32,16 @@ Sys.setlocale("LC_ALL", "en_US.UTF-8")
 
 ```{r}
 ##PATHS
-wd <- getwd()
-out_path <- file.path(wd,'..','..', 'out')
-loc_path <- file.path(out_path,'loc-nodscov2')
-scenarios_path <- file.path(out_path, 'scenarios-analysis')
+loc_path <- file.path('..','..', 'out','loc-nodscov2')
+scenarios_path <- file.path('..','..', 'out', 'scenarios-analysis')
 
-## LOAD FUNCTIONS
-source(file.path(wd, 'scenarios-analysis_fun.R'))
 # LOAD DATA
 load(file.path(scenarios_path, "parameters-admission-nodscov2.RData"))
-
-## GROUP BY CATEGORIES
-cat_paramedical <- c("nurse", "student nurse", "aux nurse")
-cat_medical <- c("physician", "ext physician", "reeducation staff", "other")
 
 ## IDS BY CATEGORY
 id_patient <- admission_sim %>% filter(info == 0) %>% distinct(id) %>% pull()
 id_hcw <- admission_sim %>% filter(info == 1) %>% distinct(id) %>% pull()
+
 ## FOR MEDICAL/PARAMEDICAL WE USE ADMISSION (INDIVIDUALS BEFORE ADDING NEW PATIENTS)
 id_paramedical <- admission %>% filter(cat %in% cat_paramedical) %>% distinct(id) %>% pull()
 id_medical <- admission %>% filter(cat %in% cat_medical) %>% distinct(id) %>% pull()
@@ -159,16 +156,8 @@ print(p_selected_c)
 
 ## FINAL PLOTS - CONTRIBUTION
 ```{r}
-pal = c('Medical' = "#5CD6D6", 'Paramedical' = "#A9B9E8", 'Patient' = "#FFA766", 'Room' = "#666699")
-env_pal = c('Contact' = 'darkorange', 'Environment' =  'orchid')
-
 selected_df <- selected_df %>%
-  mutate(scenario = case_when(
-    couple == 'sim_1-4_20'~ 'Scenario 1',
-    couple == 'sim_1-2_16'~ 'Scenario 2',
-    couple == 'sim_3-4_12'~ 'Scenario 3',
-    couple == 'sim_1_8'~ 'Scenario 4',
-    couple == 'sim_3-2_5'~ 'Scenario 5'))
+  mutate(scenario = recode(couple, !!!dict_scenarios))
 selected_df$scenario <- factor(selected_df$scenario, levels = c(paste0(rep('Scenario ',5), 1:5)))
 
 p1 = selected_df %>%
@@ -255,6 +244,107 @@ ggsave(filename = file.path(scenarios_path, 'fig', 'scenario-contribution.png'),
 
 ```
 
+
+# Plots of epidemic duration 
+```{r}
+# Plot
+epi_durations = do.call(
+  "rbind", 
+  lapply(list_epidemic_duration[selected_couples], function(x) do.call("rbind", x))
+) %>%
+  mutate(scenario = recode(couple, !!!dict_scenarios))
+
+ggplot(epi_durations, aes(x = scenario, y = duration)) +
+  geom_boxplot() +
+  geom_jitter() +
+  geom_hline(yintercept = 1, linetype = "dashed", col = "grey") +
+  geom_hline(yintercept = 90, linetype = "dashed", col = "grey") +
+  theme_bw() +
+  labs(x = "", y = "Epidemic duration (in days)")
+
+# ANOVA to compare epidemic duration 
+epi_durations_aov = aov(duration ~ scenario, data = epi_durations)
+summary(epi_durations_aov) # No significant difference
+
+```
+
+
+```{r}
+# Get contributions
+selected_scenarios_output = list_sim[selected_couples]
+all_info = data.frame()
+for (i in seq_along(selected_scenarios_output)) {
+  for (j in seq_along(selected_scenarios_output[[i]])) {
+    all_info = bind_rows(all_info, 
+                         get_ss(selected_scenarios_output[[i]][[j]], 
+                                names(selected_scenarios_output)[[i]], 
+                                j))
+  }
+}
+  
+
+# Plot contributions
+relative_contribution = all_info %>%
+  mutate(
+    scenario = recode(couple, !!!dict_scenarios),
+    r_c = ifelse(ninf_c+ninf_e == 0, 0, ninf_c/(ninf_c + ninf_e)*100) 
+    ) 
+
+ggplot(relative_contribution, aes(x = scenario, y = r_c)) +
+  geom_boxplot() +
+  geom_jitter() +
+  theme_bw() +
+  labs(x = "", y = "Relative contribution of contacts over environment")
+
+# Wilcoxon test 
+mean(relative_contribution$r_c[relative_contribution$scenario == "Scenario 1"])
+mean(relative_contribution$r_c[relative_contribution$scenario == "Scenario 5"])
+wilcox.test(relative_contribution$r_c[relative_contribution$scenario == "Scenario 1"],
+            relative_contribution$r_c[relative_contribution$scenario == "Scenario 5"])
+
+
+# Patient SAR
+all_info$ninf_patients = all_info$ninf_patients_c + all_info$ninf_patients_e
+wilcox.test(all_info$ninf_patients[all_info$couple == "sim_1-4_20"],
+            all_info$ninf_patients[all_info$couple == "sim_3-2_5"])
+c(mean(all_info$ninf_patients[all_info$couple == "sim_1-4_20"]),
+  mean(all_info$ninf_patients[all_info$couple == "sim_3-2_5"])
+)
+
+all_info$ninf_para = all_info$ninf_para_c + all_info$ninf_para_e
+wilcox.test(all_info$ninf_para[all_info$couple == "sim_1-4_20"],
+            all_info$ninf_para[all_info$couple == "sim_3-2_5"])
+c(mean(all_info$ninf_para[all_info$couple == "sim_1-4_20"]),
+  mean(all_info$ninf_para[all_info$couple == "sim_3-2_5"]))
+
+
+all_info$ninf_med = all_info$ninf_med_c + all_info$ninf_med_e
+wilcox.test(all_info$ninf_med[all_info$couple == "sim_1-4_20"],
+            all_info$ninf_med[all_info$couple == "sim_3-2_5"])
+
+# Peak time
+all_info %>%
+  mutate(scenario = recode(couple, !!!dict_scenarios)) %>%
+  ggplot(., aes(x = scenario, y = peak_time)) +
+  geom_boxplot() +
+  geom_jitter() +
+  theme_bw() +
+  labs(x = "", y = "Peak time")
+peak_time_aov = aov(peak_time ~ couple, data = all_info)
+summary(peak_time_aov) # No significant difference
+
+# Peak time
+all_info %>%
+  mutate(scenario = recode(couple, !!!dict_scenarios)) %>%
+  ggplot(., aes(x = scenario, y = epidemic_duration)) +
+  geom_boxplot() +
+  geom_jitter() +
+  theme_bw() +
+  labs(x = "", y = "Epidemic duration")
+epidemic_duration_aov = aov(epidemic_duration ~ couple, data = all_info)
+summary(epidemic_duration_aov) # No significant difference
+
+```
 
 
 

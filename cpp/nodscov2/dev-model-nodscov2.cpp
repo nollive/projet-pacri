@@ -18,6 +18,7 @@ Rcpp::List simulation(
     double nu,
     double mu,
     double env_threshold,
+    String env_model,
     double dt
     
 ) {
@@ -79,7 +80,7 @@ Rcpp::List simulation(
         // Update Lambda //
         ///////////////////
         Rcpp::DataFrame temp_global_data = clone(global_data_t);
-        temp_global_data["lambda_e"] = Lambda_e(info_ti, localization_ti, environment_ti, B, env_threshold, deltat);
+        temp_global_data["lambda_e"] = Lambda_e(info_ti, localization_ti, environment_ti, B, env_threshold, env_model, deltat);
         temp_global_data["lambda_c"] = Lambda_c(ids_ti, interaction_ti, status_ti, beta, deltat);
         global_data[t] = temp_global_data;
         ///////////////////////

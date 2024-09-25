@@ -23,3 +23,16 @@ sim-nodscov2
 *.tar.gz
 infection-network_files
 *.7z
+
+# Raw data
+data/data-nodscov2/
+
+# Processed data
+out/input-synthetic-nodscov2/
+out/loc-nodscov2/
+
+# Simulated data
+out/scenarios-analysis/
+
+
+

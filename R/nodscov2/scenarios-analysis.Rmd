@@ -24,7 +24,7 @@ loc_path <- file.path(out_path,'loc-nodscov2')
 scenarios_path <- file.path(out_path, 'scenarios-analysis')
 
 ## LOAD FUNCTIONS
-source(file.path(wd, 'scenarios-analysis_fun.R'))
+source(file.path(wd, 'scenarios-analysis-supp.R'))
 ```
 
 ## LOAD LOCALIZATION DATA & GLOBAL PARAMETERS
