@@ -18,7 +18,7 @@ library(purrr)
 rm(list = ls())
 
 # Source functions, dictionaries and helpful variables
-source("interaction-nodscov2-supp.R")
+source("helper-functions.R")
 source("scenarios-figures-supp.R")
 
 # Working directories and paths
@@ -43,7 +43,7 @@ sensor = read.csv(file.path(nodscov2_path, "met_timespent_mins_complete.csv"))
 ## Initial composition of Raymond Poincaré ICU
 ```{r initial composition}
 # Number of participants
-# Investigation staff are excluded as they were part of the staff deployin gthe sensors
+# Investigation staff are excluded as they were part of the staff deploying the sensors
 # and do not belong to the medical wards per se
 admission %>%
   filter(hospital == "APHP - RAYMOND POINCARÉ", ward == "Reanimation", !cat %in% "investigation") %>%
@@ -70,99 +70,110 @@ admission_nodscov2 = admission %>%
   mutate(cat = recode(cat, !!!dict_cat)) %>%
   mutate(cat = ifelse(is.na(cat), "Patient", cat)) %>%
   select(-hospital)
-
-# Interaction data from Raymond Poincaré
-interaction_nodscov2 = list_ward %>%
-  filter(
-    # Raymond Poincaré ICU
-    newID == "Medical ICU #1",
-    # Only categories of interest
-    from %in% admission_nodscov2$id, to %in% admission_nodscov2$id
-    ) %>% 
-  mutate(date_posix_first = strptime(date_posix_first, "%Y-%m-%dT%H:%M:%SZ"))
-
-interaction_first_last = interaction_nodscov2 %>%
-  mutate(date_day = as.Date(cut.POSIXt(date_posix_first, "day"))) %>%
-  pivot_longer(cols = c(from, to), values_to = "id") %>%
-  group_by(id) %>%
-  summarise(firstDate_interaction = min(date_day), lastDate_interaction = max(date_day))
+nrow(admission_nodscov2)
 
 # Sensor distribution data 
 # Keep individuals from the ICU of Raymond Poincaré
 # Keep individuals that have a sensor between noon on the 1st day and noon on the 2nd day 
-sensor_nodscovd2 = sensor %>%
+sensor_nodscov2 = sensor %>%
   mutate(
-    DATEREMISEJ1 = strptime(DATEREMISEJ1, "%Y-%m-%dT%H:%M:%SZ"),
-    DATERECJ1 = strptime(DATERECJ1, "%Y-%m-%dT%H:%M:%SZ"),
-    DATEREMISEJ2 = strptime(DATEREMISEJ2, "%Y-%m-%dT%H:%M:%SZ"),
-    DATERECJ2 = strptime(DATERECJ2, "%Y-%m-%dT%H:%M:%SZ"),
-    J1 = strptime(J1, "%Y-%m-%dT%H:%M:%SZ"),
-    N1 = strptime(N1, "%Y-%m-%dT%H:%M:%SZ"),
-    J2 = strptime(J2, "%Y-%m-%dT%H:%M:%SZ"),
-    N2 = strptime(N2, "%Y-%m-%dT%H:%M:%SZ"),
+    DATEREMISEJ1 = as_datetime(DATEREMISEJ1),
+    DATERECJ1 = as_datetime(DATERECJ1),
+    DATEREMISEJ2 = as_datetime(DATEREMISEJ2),
+    DATERECJ2 = as_datetime(DATERECJ2),
+    J1 = as_datetime(J1),
+    N1 = as_datetime(N1),
+    J2 = as_datetime(J2),
+    N2 = as_datetime(N2),
     firstDate_sensor = as.Date(cut(DATEREMISEJ1, "day")), 
     lastDate_sensor = as.Date(case_when(is.na(DATERECJ2) ~ cut(DATERECJ1, "day"), .default = cut(DATERECJ2, "day")))
   ) %>%
+  select(id, DATEREMISEJ1, DATERECJ1, DATEREMISEJ2, DATERECJ2) %>%
+  pivot_longer(-id, names_to = c(".value", "Day"), names_sep = "J") %>% 
+  rename(firstDate_sensor = DATEREMISE, lastDate_sensor = DATEREC) %>%
+  mutate(ward = "Reanimation") %>%
+  inner_join(., admission_nodscov2 %>% select(id, status, cat), by = "id") %>%
+  select(id, status, cat, ward, firstDate_sensor, lastDate_sensor) %>%
+  filter(!(lastDate_sensor <= noon_day1 | firstDate_sensor >= noon_day2)) %>%
+  mutate(
+    firstDate_sensor = case_when(firstDate_sensor <= noon_day1 ~ noon_day1, .default = firstDate_sensor),
+    lastDate_sensor = case_when(lastDate_sensor >= noon_day2 ~ noon_day2, .default = lastDate_sensor)
+  )
+length(unique(admission_nodscov2$id)) - length(unique(sensor_nodscov2$id)) # Individuals with no sensor during the 24hours
+
+# Interaction data from Raymond Poincaré
+interaction_nodscov2 = list_ward %>%
+  mutate(date_posix_first = as_datetime(date_posix_first)) %>%
   filter(
-    id %in% admission_nodscov2$id,
-    (DATERECJ1 >= noon_day1 & DATERECJ1 <= noon_day2) | 
-      (DATEREMISEJ1 >= noon_day1 & DATEREMISEJ1 <= noon_day2) |
-      (DATERECJ2 >= noon_day1 & DATERECJ2 <= noon_day2) |
-      (DATEREMISEJ2 >= noon_day1 & DATEREMISEJ2 <= noon_day2) |
-      (DATEREMISEJ1 <= noon_day1 & DATERECJ1 >= noon_day2) |
-      (DATEREMISEJ2 <= noon_day1 & DATERECJ2 >= noon_day2)
+    # Raymond Poincaré ICU
+    newID == "Medical ICU #1",
+    # Only categories of interest
+    from %in% sensor_nodscov2$id, to %in% sensor_nodscov2$id,
+    # Interactions that occur before or after the 24 hour period
+    !(date_posix_first+length <= noon_day1 | date_posix_first >= noon_day2)
     )
-length(unique(admission_nodscov2$id)) - length(unique(sensor_nodscovd2$id))
+
+interaction_first_last = interaction_nodscov2 %>%
+  mutate(date_day = as.Date(floor_date(date_posix_first, "day")),
+         date_day_end = as.Date(floor_date(date_posix_first+length, "day"))) %>%
+  pivot_longer(cols = c(from, to), values_to = "id") %>%
+  group_by(id) %>%
+  summarise(firstDate_interaction = min(date_day), lastDate_interaction = max(date_day_end))
 
 # Compare first date and last date in the admission data, sensor distribution data 
 # and interaction data
 admission_nodscov2 %>%
-  left_join(., sensor_nodscovd2 %>% select(id, firstDate_sensor, lastDate_sensor), by = "id") %>%
+  left_join(., sensor_nodscov2 %>% select(id, firstDate_sensor, lastDate_sensor) %>% group_by(id) %>% summarise(firstDate_sensor = min(firstDate_sensor), lastDate_sensor = max(lastDate_sensor), .groups = "drop"), by = "id") %>%
   left_join(., interaction_first_last, by = "id") %>%
-  filter(firstDate_sensor != firstDate_interaction)
+  mutate(firstDate_sensor = as.Date(firstDate_sensor)) %>%
+  filter(firstDate_sensor > firstDate_interaction) %>%
+  select(id, firstDate, firstDate_sensor, firstDate_interaction)
 
 admission_nodscov2 %>%
-  left_join(., sensor_nodscovd2 %>% select(id, firstDate_sensor, lastDate_sensor), by = "id") %>%
+  left_join(., sensor_nodscov2 %>% select(id, firstDate_sensor, lastDate_sensor) %>% group_by(id) %>% summarise(firstDate_sensor = min(firstDate_sensor), lastDate_sensor = max(lastDate_sensor), .groups = "drop"), by = "id") %>%
   left_join(., interaction_first_last, by = "id") %>%
-  filter(lastDate_sensor != lastDate_interaction)
+  mutate(lastDate_sensor = as.Date(lastDate_sensor)) %>%
+  filter(lastDate_sensor < lastDate_interaction) %>%
+  select(id, lastDate, lastDate_sensor, lastDate_interaction)
 
 # Use sensor distribution data for the first and last date in admission
 admission_nodscov2 = admission_nodscov2 %>%
   select(-c(firstDate, lastDate)) %>%
-  inner_join(., sensor_nodscovd2 %>% select(id, firstDate_sensor, lastDate_sensor), by = "id") %>%
+  inner_join(., sensor_nodscov2 %>% 
+               select(id, firstDate_sensor, lastDate_sensor) %>%
+               group_by(id) %>%
+               summarise(firstDate_sensor = min(firstDate_sensor), 
+                         lastDate_sensor = max(lastDate_sensor), 
+                         .groups = "drop"), 
+             by = "id") %>%
   rename(firstDate = firstDate_sensor, lastDate = lastDate_sensor) %>%
   select(id, status, firstDate, lastDate, ward, sex, hospitalization, cat)
 
 # Trim data to keep only 24 hours of interactions
 interaction_nodscov2 = interaction_nodscov2 %>%
-  mutate(final_time = date_posix_first + length) %>%
-  filter(date_posix_first >= noon_day1 & date_posix_first <= noon_day2 |
-           final_time >= noon_day1 & final_time <= noon_day2) %>%
   mutate(
     length = case_when(
-      date_posix_first <= noon_day1 & final_time >= noon_day1 ~ as.numeric(final_time - noon_day1),
-      date_posix_first <= noon_day2 & final_time >= noon_day2 ~ as.numeric(noon_day2 - date_posix_first),
+      date_posix_first <= noon_day1 ~ as.numeric(date_posix_first+length - noon_day1),
+      date_posix_first+length >= noon_day2 ~ as.numeric(noon_day2 - date_posix_first),
       .default = length 
     ),
     date_posix_first = case_when(
-      date_posix_first <= noon_day1 & final_time >= noon_day1 ~ noon_day1,
+      date_posix_first <= noon_day1 ~ noon_day1,
       .default = date_posix_first
     )
   )
 
+# Verify that we have the same participants in all three databases
+identical(
+  sort(unique(admission_nodscov2$id)),
+  sort(unique(sensor_nodscov2$id))
+)
+all(c(interaction_nodscov2$from, interaction_nodscov2$to) %in% admission_nodscov2$id)
+
 # Agenda of healthcare workers
-agenda_nodscov2 = sensor_nodscovd2 %>%
-  select(id, DATEREMISEJ1, DATERECJ1, DATEREMISEJ2, DATERECJ2) %>%
-  pivot_longer(-id, names_to = c(".value", "Day"), names_sep = "J") %>% 
-  rename(firstDate = DATEREMISE, lastDate = DATEREC) %>%
-  mutate(ward = "Reanimation") %>%
-  left_join(., admission_nodscov2 %>% select(id, status, cat), by = "id") %>%
-  filter(!is.na(firstDate), status != "PA") %>%
-  select(id, status, cat, ward, firstDate, lastDate) %>%
-  mutate(
-    firstDate = case_when(firstDate <= noon_day1 ~ noon_day1, .default = firstDate),
-    lastDate = case_when(lastDate >= noon_day2 ~ noon_day2, .default = lastDate)
-  )
+agenda_nodscov2 = sensor_nodscov2 %>%
+  rename(firstDate = firstDate_sensor, lastDate = lastDate_sensor) %>%
+  filter(status != "PA")
 
 # Number of participants by category retained from the real data
 admission_nodscov2 %>%
@@ -193,7 +204,6 @@ interaction_nodscov2 %>%
   mutate(length = length/3600) %>%
   select(length) %>%
   summary()
-
 ```
 
 ## Contact recurrence probability 
@@ -205,14 +215,11 @@ for (i in seq_along(admission_nodscov2$id)) {
   ii = admission_nodscov2$id[i]
   
   # Get n hours spent in the ward with a sensor 
-  all_h = sensor_nodscovd2 %>%
+  all_h = sensor_nodscov2 %>%
     filter(id == ii) %>%
-    select(id, DATEREMISEJ1, DATERECJ1, DATEREMISEJ2, DATERECJ2) %>%
-    pivot_longer(-id, names_to = c(".value", "Day"), names_sep = "J") %>%
-    filter(!is.na(DATEREMISE)) %>%
-    mutate(DATEREMISE = cut(DATEREMISE, "hour"), DATEREC = cut(DATEREC, "hour")) %>%
+    mutate(DATEREMISE = floor_date(firstDate_sensor, "hour"), DATEREC = floor_date(lastDate_sensor, "hour"), k = 1:n()) %>%
     arrange(DATEREMISE) %>%
-    group_by(Day) %>%
+    group_by(k) %>%
     nest() %>%
     mutate(out = map(data, unroll_dates)) %>%
     unnest(out) %>%
@@ -243,13 +250,15 @@ for (i in seq_along(admission_nodscov2$id)) {
           proba_h[h-1] = 0
         }
       }
-    } 
+    }
+    
+    # Mean individual hourly probability of recurring contacts
+    pind[i] = sum(proba_h) / length(proba_h)
+    
   } else {
-    proba_h = 0
+    pind[i] = 0
   }
 
-  # Mean individual hourly probability of recurring contacts
-  pind[i] = sum(proba_h) / length(all_h)
 }
 
 # Plot mean individual probability of recurring contacts
@@ -277,8 +286,8 @@ admission_nodscov2 %>%
   mutate(pind = pind, cat = ifelse(cat == "Patient", cat, "HCW")) %>%
   group_by(cat) %>%
   summarise(m = mean(pind), .groups = "drop")
-  
 ```
+
 
 ## Patient augmentation
 ```{r patient augmentation}
@@ -305,29 +314,27 @@ patient_rooms$room[patient_rooms$id %in% double_rooms[[1]]] = min(patient_rooms$
 
 # Patient augmentation
 set.seed(20240924)
-last_day = as.Date("2020-05-07") + 90
-
 for (id in patients_ids) {
   
   # Stay length of original individual
-  if (admission_nodscov2$lastDate[admission_nodscov2$id == id] == as.Date("2020-05-07")) {
+  if (as.Date(floor_date(admission_nodscov2$lastDate[admission_nodscov2$id == id])) == as.Date("2020-05-07")) {
     stay_length = sample(6:13, 1)
-    new_lastDate = as.Date("2020-05-06") + stay_length
+    new_lastDate = as_datetime("2020-05-06 12:00:00") + stay_length*3600*24
     admission_nodscov2$lastDate[admission_nodscov2$id == id] = new_lastDate
   } else {
-    new_lastDate = as.Date("2020-05-06")
+    new_lastDate = as_datetime("2020-05-06 12:00:00")
   }
   
   # Augment patients by keeping the incrementing the original id
   i = 1
   new_room = data.frame()
-  while(new_lastDate < last_day) {
+  while(new_lastDate < noon_last_day) {
     stay_length = sample(6:13, 1)
     to_rbind = data.frame(
       id = paste0(id, "-", i),
       status = "PA",
       firstDate = new_lastDate,
-      lastDate = min(new_lastDate+stay_length, last_day),
+      lastDate = min(new_lastDate+stay_length*3600*24, noon_last_day),
       ward = "Reanimation",
       sex = NA,
       hospitalization = "patient",
@@ -343,7 +350,8 @@ for (id in patients_ids) {
     )
     
     admission_nodscov2 = rbind(admission_nodscov2, to_rbind)
-    new_lastDate = new_lastDate+stay_length
+    new_lastDate = min(new_lastDate+stay_length*3600*24, noon_last_day)
+    i = i+1
   }
 }
 
@@ -351,7 +359,6 @@ for (id in patients_ids) {
 admission_nodscov2 %>%
   group_by(status, cat) %>%
   summarise(n = n(), .groups = "drop") 
-
 ```
 
 ## Repeat schedule of HCWs over the 90-day period
@@ -389,7 +396,6 @@ admission_nodscov2 = admission_nodscov2 %>%
 ## Change IDs of individuals to integrate PA or PE at the start of each ID 
 ```{r change ids}
 # This is a necessary step for the synthetic contact algorithm
-
 # Interaction data
 interaction_nodscov2 = interaction_nodscov2 %>%
   mutate(
@@ -466,7 +472,7 @@ p2 = list_ward %>%
          cat_to = case_when(cat_to %in% c("Paramedical", "Medical") ~ "HCW",
                               !cat_to %in% c("Patient", "Paramedical", "Medical") ~ "Other",
                               .default = cat_to),
-         date_posix_first = strptime(date_posix_first, "%Y-%m-%dT%H:%M:%SZ")
+         date_posix_first = as_datetime(date_posix_first)
          ) %>%
   mutate(cat_pair = case_when(
     cat_from == "Patient" & cat_to == "Patient" ~ "Patient-Patient",
