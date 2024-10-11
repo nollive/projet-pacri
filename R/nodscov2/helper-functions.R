@@ -16,8 +16,11 @@ pal = c("Observed" = "darkorchid", "Reconstructed"= "darkorange")
 
 # Variables---------------------------------------------------------------------
 noon_day1 = as_datetime("2020-05-06 12:00:00")
+midnight_day1 = as_datetime("2020-05-06 00:00:00")
 noon_day2 = as_datetime("2020-05-07 12:00:00")
+midnight_day2 = as_datetime("2020-05-07 00:00:00")
 noon_last_day = noon_day1 + 90*3600*24
+midnight_last_day = midnight_day1 + 90*3600*24
 
 # Functions---------------------------------------------------------------------
 # Get vector of hours between two POSIXct dates 

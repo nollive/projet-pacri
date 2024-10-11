@@ -45,7 +45,7 @@ interaction_real = read.csv2(file.path(synthetic_path, "interactions.csv")) %>%
 
 # Synthetic data
 interaction_synthetic = data.frame()
-for (f in list.files(file.path(synthetic_path, "test"), pattern = "matContactBuiltSimulatedCtcNetworks", full.names = T)) {
+for (f in list.files(file.path(synthetic_path, "test"), pattern = "matContact", full.names = T)) {
   interaction_synthetic = bind_rows(
     interaction_synthetic,
     read.csv2(f) %>% 
@@ -175,7 +175,7 @@ for (i in ids_pe) {
       interactions_in_schedule, 
       data.frame(
         id = i, 
-        coherent_interactions = all(out_df)
+        coherent_interactions = all(out_vec)
       )
     )
   
@@ -476,7 +476,7 @@ distrib_real = rbind(distrib_PAPA, distrib_PEPE, distrib_PAPE) %>%
 dur_sim = data.frame()
 distrib_simu = data.frame()
 
-for (f in list.files(file.path(synthetic_path, "test"), "matContactBuilt", full.names = T)) {
+for (f in list.files(file.path(synthetic_path, "biased"), "matContactBuilt", full.names = T)) {
  data = read.csv2(f)
 
   dur_simu = data %>%

@@ -439,6 +439,80 @@ write.csv2(new_agenda, file.path(synthetic_path, "agenda.csv"),  quote = F, row.
 write.csv2(patient_rooms, file.path(synthetic_path, "patient_rooms.csv"), quote = F, row.names = F)
 ```
 
+
+## Pool data over one day
+```{r save synthetic}
+# Change interactions
+interaction_morning1 = interaction_nodscov2 %>%
+  filter(date_posix_first+length >= midnight_day2) %>%
+  mutate(date_posix_first = date_posix_first-3600*24) %>%
+  mutate(
+    date_posix = case_when(date_posix_first < midnight_day1 ~ midnight_day1, .default = date_posix_first),
+    length = case_when(date_posix_first < midnight_day1 ~ as.numeric(date_posix_first+length-midnight_day1), .default = length)
+  ) %>%
+  arrange(date_posix) %>%
+  select(-date_posix_first)
+
+interaction_pooled = interaction_nodscov2 %>%
+  rename(date_posix = date_posix_first) %>%
+  filter(date_posix < midnight_day2) %>%
+  mutate(
+    length = case_when(date_posix+length >= midnight_day2 ~ as.numeric(midnight_day2-date_posix), .default = length)
+  ) %>%
+  bind_rows(., interaction_morning1) %>%
+  arrange(date_posix) 
+
+# Add morning of day2 as morning of day 1 in the schedule
+# and remove the last half day
+agenda_pooled_to_add = new_agenda %>%
+  filter(lastDate <= noon_day2, lastDate >= midnight_day2) %>%
+  mutate(
+    firstDate = case_when(
+      firstDate < midnight_day2 ~ midnight_day1,
+      firstDate >= midnight_day2 ~ firstDate - 24 *3600
+    ),
+    lastDate = lastDate - 24*3600
+    ) %>%
+  arrange(firstDate)
+  
+agenda_pooled = bind_rows(agenda_pooled_to_add, new_agenda) %>%
+  filter(firstDate < floor_date(noon_last_day, "day")) %>%
+  mutate(
+    lastDate = case_when(lastDate >= midnight_last_day ~ midnight_last_day, .default = lastDate)
+  ) %>%
+  arrange(firstDate)
+
+agenda_pooled %>% filter(firstDate > lastDate) %>% nrow()
+
+# Check that all real patients are included on 2020-05-06
+# same for HCW that are equipped with a sensor on 2020-05-07
+admission_nodscov2 %>%
+  filter(status == "PA", !grepl("PA.*-[0-9]+$", id), firstDate != as_datetime("2020-05-06 12:00:00"))
+
+admission_pooled = admission_nodscov2 %>%
+  arrange(id, status) %>%
+  mutate(firstDate = floor_date(firstDate, "day"), lastDate = floor_date(lastDate, "day"))
+
+for (i in admission_pooled$id[admission_pooled$status == "PE"]) {
+  admission_pooled$firstDate[admission_pooled$id == i] = min(floor_date(agenda_pooled$firstDate[agenda_pooled$id == i], "day"))
+  admission_pooled$lastDate[admission_pooled$id == i] = max(floor_date(agenda_pooled$lastDate[agenda_pooled$id == i], "day"))
+}
+
+# Save pooled data
+# Interaction data
+interaction_pooled %>%
+  mutate(date_posix = as.character(format(date_posix))) %>%
+  write.csv2(., file.path(synthetic_path, "interactions_pooled.csv"), quote = F, row.names = F)
+
+# Admission data
+write.csv2(admission_pooled, file.path(synthetic_path, "admission_pooled.csv"), quote = F, row.names = F)
+
+# HCW schedule
+agenda_pooled %>%
+  mutate(firstDate = as.character(format(firstDate)), lastDate = as.character(format(lastDate))) %>%
+  write.csv2(., file.path(synthetic_path, "agenda_pooled.csv"),  quote = F, row.names = F)
+```
+
 ## Plot raw data for supplementary materials
 ### Before filtration
 ```{r plots before filtration}
