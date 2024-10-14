@@ -38,6 +38,24 @@ unroll_dates = function(df) {
   return(out)
 }
 
+# Get vector of days between two dates
+unroll_days = function(df) {
+  out = seq.Date(df$firstDate, df$lastDate, 1)
+  return(out)
+}
+
+# In a dataframe, cocnatenate rows that corresponding to consecutive time periods
+concatenate_schedules = function(df) {
+  out = df %>%
+    arrange(firstDate) %>%
+    mutate(tomerge = ifelse(firstDate %in% lag(lastDate), 1, 0)) %>%
+    mutate(lastDate = case_when(lastDate %in% lead(firstDate) ~ lead(lastDate), .default = lastDate)) %>%
+    filter(tomerge == 0) %>%
+    select(-tomerge)
+  return(out)
+}
+
+
 # Expand.grid for dataframes (combine all rows of two distinct dataframes)
 expand.grid.df <- function(...) Reduce(function(...) merge(..., by=NULL), list(...))
 
@@ -88,6 +106,41 @@ get_net_metrics = function(graph_data, adm_data, iter = 0, network = "Observed")
   
   return(data)
   
+}
+
+# Get the assortativity by degree
+get_assortativity_degree = function(graph_data, adm_data, iter = 0, network = "Observed", 
+                                    time_window){
+  
+  days = unique(graph_data$date_posix)
+  
+  data = data.frame(assortativities = rep(0, length(days)),
+                    iter = iter,
+                    network = network,
+                    day = days,
+                    time_window = time_window)
+  
+  
+  for(i in 1:length(days)){
+    
+    # full network
+    data_d = graph_data %>%
+      filter(date_posix == days[i])
+    
+    graph_d = graph_from_data_frame(data_d, directed = F)
+    graph_d = simplify(graph_d)
+    vertex_atts = data.frame(id = vertex_attr(graph_d, "name")) %>%
+      left_join(adm_data, "id")
+    graph_d = graph_d %>%
+      set_vertex_attr("cat", value = vertex_atts$cat) %>%
+      set_vertex_attr("cat_ag", value = vertex_atts$cat_ag) %>%
+      set_vertex_attr("staff", value = vertex_atts$staff) %>%
+      set_vertex_attr("ward", value = vertex_atts$ward)
+    
+    data$assortativities[i] = assortativity_degree(graph_d, directed = F)
+    
+  }
+  return(data)
 }
 
 # Function to calculate the temporal correlation of a network (from Leclerc et al., 2024)

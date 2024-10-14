@@ -26,10 +26,7 @@ infection-network_files
 
 # Raw data
 data/data-nodscov2/
-data/data-synthetic-graphs/admission.csv
-data/data-synthetic-graphs/agenda.csv
-data/data-synthetic-graphs/interactions.csv
-data/data-synthetic-graphs/patient_rooms.csv
+data/data-synthetic-graphs/
 
 # Processed data
 out/input-synthetic-nodscov2/

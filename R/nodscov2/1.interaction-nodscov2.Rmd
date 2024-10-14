@@ -5,6 +5,7 @@ date: "2024-05-03"
 output: html_document
 ---
 
+
 ## Libraries
 ```{r setup, include=TRUE, echo=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -101,7 +102,7 @@ sensor_nodscov2 = sensor %>%
   )
 length(unique(admission_nodscov2$id)) - length(unique(sensor_nodscov2$id)) # Individuals with no sensor during the 24hours
 
-# Duplicated interactions 
+# Save duplicated interactions 
 list_ward %>%
   mutate(date_posix_first = as_datetime(date_posix_first)) %>%
   filter(
@@ -133,7 +134,8 @@ interaction_nodscov2 = list_ward %>%
   summarise(length = max(length), .groups = "drop") %>%
   distinct() %>%
   # Remove one weird interaction
-  filter(!(from == "001-0026-N-S" & to == "001-0027-P-A"& date_posix_first == as_datetime("2020-05-06 11:45:00") & length == 1510))
+  filter(!(from == "001-0026-N-S" & to == "001-0027-P-A"& date_posix_first == as_datetime("2020-05-06 11:45:00") & length == 1510)) %>%
+  select(from, to, date_posix_first, length, ward_id, wardType, newID)
 
 interaction_first_last = interaction_nodscov2 %>%
   mutate(date_day = as.Date(floor_date(date_posix_first, "day")),
@@ -228,7 +230,7 @@ interaction_nodscov2 %>%
   summary()
 ```
 
-## Contact recurrence probability 
+## Contact recurrence probability per hour
 ```{r contact recurrence by hour}
 # Hourly individual probability of recurring contacts and mean individual
 # probability
@@ -310,6 +312,89 @@ admission_nodscov2 %>%
   summarise(m = mean(pind), .groups = "drop")
 ```
 
+## Contact recurrence probability per day
+```{r contact recurrence by hour}
+# Daily individual probability of recurring contacts and mean individual
+# probability
+pind = rep(NA, nrow(admission_nodscov2))
+for (i in seq_along(admission_nodscov2$id)) {
+  ii = admission_nodscov2$id[i]
+  
+  # Get n days spent in the ward with a sensor 
+  all_d = sensor_nodscov2 %>%
+    filter(id == ii) %>%
+    mutate(DATEREMISE = floor_date(firstDate_sensor, "day"), DATEREC = floor_date(lastDate_sensor, "day"), k = 1:n()) %>%
+    arrange(DATEREMISE) %>%
+    group_by(k) %>%
+    nest() %>%
+    mutate(out = map(data, unroll_dates)) %>%
+    unnest(out) %>%
+    .$date_list
+    
+  if (length(all_d) > 1) {
+    interaction_d = vector("list", length(all_d))
+    proba_d = rep(NA, length(all_d)-1)
+    
+    # Get lists of contacts per hour
+    for (d in seq_along(all_d)) {
+      dd = all_d[d]
+      contacts = interaction_nodscov2 %>%
+        filter(from == ii | to == ii, date_posix_first >= dd, date_posix_first < dd+3600*24) %>%
+        select(from, to) %>%
+        unlist()
+      contacts = unique(contacts[contacts != ii])
+      names(contacts) = NULL
+      interaction_d[[d]] = contacts 
+    }
+    
+    # Get hourly probability of recurring contacts
+    if (length(all_d)>1) {
+      for (h in 2:length(all_d)) {
+        if (length(interaction_d[[d]]) > 0) {
+          proba_d[d-1] = sum(interaction_d[[d]] %in% unlist(interaction_d[1:(d-1)])) / length(interaction_d[[d]])
+        } else {
+          proba_d[d-1] = 0
+        }
+      }
+    }
+    
+    # Mean individual hourly probability of recurring contacts
+    pind[i] = sum(proba_d) / length(proba_d)
+    
+  } else {
+    pind[i] = 0
+  }
+
+}
+
+# Plot mean individual probability of recurring contacts
+admission_nodscov2 %>%
+  mutate(pind = pind) %>%
+  filter(!is.na(pind)) %>%
+  ggplot(., aes(x = cat, y = pind)) +
+  geom_boxplot() +
+  geom_jitter() +
+  theme_bw() +
+  labs(x = "", y = "Probability of daily recurring contact")
+
+# Mean probability of recurring contacts by individual category
+admission_nodscov2 %>%
+  mutate(pind = pind) %>%
+  group_by(cat) %>%
+  summarise(m = mean(pind, na.rm = T), .groups = "drop")
+
+# Comparison by category of individual
+admission_nodscov2 %>%
+  mutate(pind = pind) %>%
+  filter(!is.na(pind)) %>%
+  rstatix::wilcox_test(pind ~ cat, ref.group = "Paramedical")
+
+# Mean probability when aggregating paramedical and medical staff
+admission_nodscov2 %>%
+  mutate(pind = pind, cat = ifelse(cat == "Patient", cat, "HCW")) %>%
+  group_by(cat) %>%
+  summarise(m = mean(pind, na.rm = T), .groups = "drop")
+```
 
 ## Patient augmentation
 ```{r patient augmentation}
@@ -391,8 +476,17 @@ for (d in 1:90) {
   new_agenda = rbind(new_agenda, agenda_nodscov2 %>% mutate(firstDate = firstDate+3600*24*d,
                                                             lastDate = lastDate+3600*24*d))
 }
+
 new_agenda = new_agenda %>%
-  filter(lastDate <= noon_last_day)
+  # Remove the half day of the last day
+  filter(lastDate <= noon_last_day) %>%
+  # Concatenate rows they are consecutive
+  group_by(id, status, cat, ward) %>%
+  nest() %>%
+  mutate(out = map(data, concatenate_schedules)) %>%
+  select(-data) %>% 
+  unnest(out) %>% 
+  ungroup()
 
 # Get new admission dates for HCWs
 new_admission_dates = new_agenda %>%
@@ -452,18 +546,18 @@ new_agenda = new_agenda %>%
 
 ```{r}
 # Schedule of healthcare workers 
-ids_pe = admission$id[admission$status == "PE"]
+ids_pe = admission_nodscov2$id[admission_nodscov2$status == "PE"]
 interactions_in_schedule = data.frame()
 
 for (i in ids_pe) {
   # Schedule of the HCW
-  schedule_id = schedule_real %>%
+  schedule_id = new_agenda %>%
     filter(id == i, lastDate <= as_datetime("2020-05-07 12:00:00")) %>%
     select(firstDate, lastDate)
   
   # Get all interactions
-  if (sum(interaction_real$to == i | interaction_real$from == i) > 0) {
-    interactions_id = interaction_real %>%
+  if (sum(interaction_nodscov2$to == i | interaction_nodscov2$from == i) > 0) {
+    interactions_id = interaction_nodscov2 %>%
       filter(from == i| to == i) %>%
       select(date_posix_first, length) %>%
       mutate(n = 1:n())
@@ -496,24 +590,24 @@ for (i in ids_pe) {
   }
 }
 
-summary(interactions_in_schedule)
-
+sum(interactions_in_schedule$coherent_interactions, na.rm = T)
+sum(is.na(interactions_in_schedule$coherent_interactions))
 ```
 
 
 ## Save data for synthetic algorithm
 ```{r save synthetic}
 # Interaction data
-write.csv2(interaction_nodscov2, file.path(synthetic_path, "interactions.csv"), quote = F, row.names = F)
+write.csv2(interaction_nodscov2, file.path(synthetic_path, "interactions_no_dup.csv"), quote = F, row.names = F)
 
 # Admission data
-write.csv2(admission_nodscov2, file.path(synthetic_path, "admission.csv"), quote = F, row.names = F)
+write.csv2(admission_nodscov2, file.path(synthetic_path, "admission_no_dup.csv"), quote = F, row.names = F)
 
 # HCW schedule
-write.csv2(new_agenda, file.path(synthetic_path, "agenda.csv"),  quote = F, row.names = F)
+write.csv2(new_agenda, file.path(synthetic_path, "agenda_no_dup.csv"),  quote = F, row.names = F)
 
 # Patient rooms
-write.csv2(patient_rooms, file.path(synthetic_path, "patient_rooms.csv"), quote = F, row.names = F)
+write.csv2(patient_rooms, file.path(synthetic_path, "patient_rooms_no_dup.csv"), quote = F, row.names = F)
 ```
 
 
