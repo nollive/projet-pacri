@@ -22,7 +22,7 @@ midnight_day2 = as_datetime("2020-05-07 00:00:00")
 noon_last_day = noon_day1 + 90*3600*24
 midnight_last_day = midnight_day1 + 90*3600*24
 
-# Functions---------------------------------------------------------------------
+# Functions to analyze data-----------------------------------------------------
 # Get vector of hours between two POSIXct dates 
 unroll_dates = function(df) {
   if ("DATEREMISE" %in% colnames(df)) {
@@ -44,7 +44,7 @@ unroll_days = function(df) {
   return(out)
 }
 
-# In a dataframe, cocnatenate rows that corresponding to consecutive time periods
+# In a dataframe, cocnatenate rows that correspond to consecutive time periods
 concatenate_schedules = function(df) {
   out = df %>%
     arrange(firstDate) %>%
@@ -59,6 +59,76 @@ concatenate_schedules = function(df) {
 # Expand.grid for dataframes (combine all rows of two distinct dataframes)
 expand.grid.df <- function(...) Reduce(function(...) merge(..., by=NULL), list(...))
 
+# Create a new variable that corresponds to the pair id
+# i.e. the concatenation of the ids of the participants in interactions sorted by 
+# alphanumerical order
+get_pair_id = function(df) {
+  if (nrow(df) == 1) {
+    df$pair = paste0(sort(c(df$from, df$to)), collapse = "_")
+    return(df) 
+  }
+}
+
+# Detect for a set of interactions between two individuals, overlapping contacts
+get_overlapping_contacts = function(df) {
+  df$overlap = F
+  
+  if (nrow(df) > 1) {
+    for (i in 1:nrow(df)) {
+      
+      if ("date_posix_first" %in% colnames(df)) {
+        overlap = df$date_posix_first[i] >= df$date_posix_first & df$date_posix_first[i] <= df$date_posix_first+df$length
+      }      
+      if ("date_posix" %in% colnames(df)) {
+        overlap = df$date_posix[i] >= df$date_posix & df$date_posix[i] <= df$date_posix+df$length
+      }
+      
+      if (sum(overlap) > 1) {
+        j = which(overlap)
+        j = j[j!=i]
+        df$overlap[i] = T
+        df$overlap[j] = T
+      }
+    }
+  }
+  
+  return(df)
+}
+
+# Detect and fusion overlapping contacts
+fusion_overlapping_contacts = function(df) {
+  
+  if (nrow(df) > 1) {
+    for (i in 1:nrow(df)) {
+      
+      overlap = df$date_posix_first[i] >= df$date_posix_first & df$date_posix_first[i] <= df$date_posix_first+df$length
+      
+      if (sum(overlap) > 1) {
+        # Contacts with overlap
+        j = which(overlap)
+        j = j[j!=i]
+        
+        # Start of interaction
+        new_date_posix = min(df$date_posix_first[c(i,j)])
+        
+        # End of interaction
+        new_end = max(df$date_posix_first[c(i,j)] + df$length[c(i,j)])
+        new_length = as.numeric(difftime(new_end, new_date_posix, units = "sec"))
+        
+        # Replace date_posix and length
+        df$date_posix_first[c(i,j)] = new_date_posix
+        df$length[c(i,j)] = new_length
+      }
+    }
+  }
+  
+  df = distinct(df)
+  
+  return(df)
+  
+}
+
+# Functions to analyze networks-------------------------------------------------
 # Function to return a set of network metrics (from Leclerc et al., 2024)
 # https://gitlab.pasteur.fr/qleclerc/network_algorithm/-/tree/main?ref_type=heads
 get_net_metrics = function(graph_data, adm_data, iter = 0, network = "Observed"){

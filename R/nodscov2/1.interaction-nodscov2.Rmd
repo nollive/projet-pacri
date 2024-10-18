@@ -28,7 +28,7 @@ nodscov2_path = file.path("..", "..", "data", "data-nodscov2")
 synthetic_path = file.path("..", "..", "data", "data-synthetic-graphs")
 ```
 
-## NodsCov2 data (not shared)
+## Load Nods-CoV-2 data (not shared)
 ```{r load data, echo=FALSE}
 # Admission dates
 load(file.path(nodscov2_path, "admission_ctc_nodscov2.RData"))
@@ -60,6 +60,7 @@ admission %>%
 ```
 
 ## Create input dataframes for the synthetic network algorithm 
+### Create admission and sensor dataframes
 ```{r synthetic data}
 # Create dataframe with admission dates for the synthetic network algorithm
 admission_nodscov2 = admission %>%
@@ -95,12 +96,51 @@ sensor_nodscov2 = sensor %>%
   mutate(ward = "Reanimation") %>%
   inner_join(., admission_nodscov2 %>% select(id, status, cat), by = "id") %>%
   select(id, status, cat, ward, firstDate_sensor, lastDate_sensor) %>%
-  filter(!(lastDate_sensor <= noon_day1 | firstDate_sensor >= noon_day2)) %>%
-  mutate(
-    firstDate_sensor = case_when(firstDate_sensor <= noon_day1 ~ noon_day1, .default = firstDate_sensor),
-    lastDate_sensor = case_when(lastDate_sensor >= noon_day2 ~ noon_day2, .default = lastDate_sensor)
-  )
-length(unique(admission_nodscov2$id)) - length(unique(sensor_nodscov2$id)) # Individuals with no sensor during the 24hours
+  filter(!is.na(lastDate_sensor), !is.na(firstDate_sensor))
+  # filter(!(lastDate_sensor <= noon_day1 | firstDate_sensor >= noon_day2)) %>%
+  # mutate(
+  #   firstDate_sensor = case_when(firstDate_sensor <= noon_day1 ~ noon_day1, .default = firstDate_sensor),
+  #   lastDate_sensor = case_when(lastDate_sensor >= noon_day2 ~ noon_day2, .default = lastDate_sensor)
+  # )
+length(unique(admission_nodscov2$id)) - length(unique(sensor_nodscov2$id)) # Individuals with no sensor during the study period
+```
+
+### Explore interaction data  
+```{r}
+# Rearrange interaction data 
+verify_pair_distribution = list_ward %>%
+  mutate(date_posix_first = as_datetime(date_posix_first)) %>%
+  filter(
+    # Raymond Poincaré ICU
+    newID == "Medical ICU #1",
+    # Only categories of interest
+    from %in% sensor_nodscov2$id, to %in% sensor_nodscov2$id,
+    # Interactions that occur before or after the 24 hour period
+    # !(date_posix_first+length <= noon_day1 | date_posix_first >= noon_day2)
+    ) %>%
+  group_by(from, to, date_posix_first, ward_id, wardType, newID) %>%
+  summarise(length = max(length), .groups = "drop") %>%
+  distinct() %>%
+  mutate(id = 1:n()) %>%
+  nest(.by = id) %>%
+  mutate(data = map(data, get_pair_id)) %>%
+  unnest(data) 
+
+# Get number of pairs that are not stored with the correct ids 
+verify_pair_distribution %>%
+  distinct(from, to, pair) %>%
+  group_by(pair) %>%
+  mutate(n = n()) %>%
+  filter(n>1) %>%
+  nrow()
+
+# Get number of overlapping contacts
+verify_pair_distribution %>%
+  distinct(from, to, pair) %>%
+  group_by(pair) %>%
+  mutate(n = n()) %>%
+  filter(n>1) %>%
+  nrow()
 
 # Save duplicated interactions 
 list_ward %>%
@@ -111,14 +151,20 @@ list_ward %>%
     # Only categories of interest
     from %in% sensor_nodscov2$id, to %in% sensor_nodscov2$id,
     # Interactions that occur before or after the 24 hour period
-    !(date_posix_first+length <= noon_day1 | date_posix_first >= noon_day2)
+    # !(date_posix_first+length <= noon_day1 | date_posix_first >= noon_day2)
     ) %>%
   group_by(from, to, date_posix_first, ward_id, wardType, newID) %>%
   mutate(n = n()) %>%
-  filter(n>1 | (from == "001-0026-N-S" & to == "001-0027-P-A"& date_posix_first == as_datetime("2020-05-06 11:45:00"))) %>%
+  filter(n>1) %>%
   arrange(from, to, date_posix_first) %>%
   write.csv2(file.path(synthetic_path, "duplicates_contacts.csv"), quote = F, row.names = F)
 
+# Overlapping contacts
+
+```
+
+### Create cleaned admission, schedule and interaction data 
+````{r}
 # Interaction data from Raymond Poincaré
 interaction_nodscov2 = list_ward %>%
   mutate(date_posix_first = as_datetime(date_posix_first)) %>%
@@ -128,13 +174,19 @@ interaction_nodscov2 = list_ward %>%
     # Only categories of interest
     from %in% sensor_nodscov2$id, to %in% sensor_nodscov2$id,
     # Interactions that occur before or after the 24 hour period
-    !(date_posix_first+length <= noon_day1 | date_posix_first >= noon_day2)
+    # !(date_posix_first+length <= noon_day1 | date_posix_first >= noon_day2)
     ) %>%
+  # Keep longest contacts when several start at the same time for a specific pair of participants
   group_by(from, to, date_posix_first, ward_id, wardType, newID) %>%
   summarise(length = max(length), .groups = "drop") %>%
+  # Remove duplicates 
   distinct() %>%
-  # Remove one weird interaction
-  filter(!(from == "001-0026-N-S" & to == "001-0027-P-A"& date_posix_first == as_datetime("2020-05-06 11:45:00") & length == 1510)) %>%
+  # Fusion overlapping contacts
+  nest(.by = c(from, to, ward_id, wardType, newID)) %>%
+  mutate(data = map(data, fusion_overlapping_contacts)) %>%
+  unnest(data) %>%
+  distinct() %>%
+  # Reorder columns 
   select(from, to, date_posix_first, length, ward_id, wardType, newID)
 
 interaction_first_last = interaction_nodscov2 %>%
@@ -174,18 +226,18 @@ admission_nodscov2 = admission_nodscov2 %>%
   select(id, status, firstDate, lastDate, ward, sex, hospitalization, cat)
 
 # Trim data to keep only 24 hours of interactions
-interaction_nodscov2 = interaction_nodscov2 %>%
-  mutate(
-    length = case_when(
-      date_posix_first <= noon_day1 ~ as.numeric(date_posix_first+length - noon_day1),
-      date_posix_first+length >= noon_day2 ~ as.numeric(noon_day2 - date_posix_first),
-      .default = length 
-    ),
-    date_posix_first = case_when(
-      date_posix_first <= noon_day1 ~ noon_day1,
-      .default = date_posix_first
-    )
-  )
+# interaction_nodscov2 = interaction_nodscov2 %>%
+#   mutate(
+#     length = case_when(
+#       date_posix_first <= noon_day1 ~ as.numeric(difftime(date_posix_first+length, noon_day1, units = "sec")),
+#       date_posix_first+length >= noon_day2 ~ as.numeric(difftime(noon_day2, date_posix_first, units = "sec")),
+#       .default = length 
+#     ),
+#     date_posix_first = case_when(
+#       date_posix_first <= noon_day1 ~ noon_day1,
+#       .default = date_posix_first
+#     )
+#   )
 
 # Verify that we have the same participants in all three databases
 identical(
@@ -211,6 +263,7 @@ admission_nodscov2 %>%
   summarise(n = n(), .groups = "drop")
 
 ```
+
 
 ## Frequency of contacts of more than one hour
 ```{r file for synthetic data algo}
@@ -543,7 +596,7 @@ new_agenda = new_agenda %>%
 
 ```
 
-
+## Verify the concordance between contacts and the schedule of healthcare workers
 ```{r}
 # Schedule of healthcare workers 
 ids_pe = admission_nodscov2$id[admission_nodscov2$status == "PE"]
@@ -598,16 +651,16 @@ sum(is.na(interactions_in_schedule$coherent_interactions))
 ## Save data for synthetic algorithm
 ```{r save synthetic}
 # Interaction data
-write.csv2(interaction_nodscov2, file.path(synthetic_path, "interactions_no_dup.csv"), quote = F, row.names = F)
+write.csv2(interaction_nodscov2, file.path(synthetic_path, "interactions.csv"), quote = F, row.names = F)
 
 # Admission data
-write.csv2(admission_nodscov2, file.path(synthetic_path, "admission_no_dup.csv"), quote = F, row.names = F)
+write.csv2(admission_nodscov2, file.path(synthetic_path, "admission.csv"), quote = F, row.names = F)
 
 # HCW schedule
-write.csv2(new_agenda, file.path(synthetic_path, "agenda_no_dup.csv"),  quote = F, row.names = F)
+write.csv2(new_agenda, file.path(synthetic_path, "agenda.csv"),  quote = F, row.names = F)
 
 # Patient rooms
-write.csv2(patient_rooms, file.path(synthetic_path, "patient_rooms_no_dup.csv"), quote = F, row.names = F)
+write.csv2(patient_rooms, file.path(synthetic_path, "patient_rooms.csv"), quote = F, row.names = F)
 ```
 
 

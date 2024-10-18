@@ -26,21 +26,21 @@ synthetic_path = file.path("..", "..", "data", "data-synthetic-graphs")
 ## Load real and synthetic contact data
 ```{r data loading, echo = FALSE}
 # List of individuals 
-admission = read.csv2(file.path(synthetic_path, "admission.csv")) %>%
+admission = read.csv2(file.path(synthetic_path, "admission_no_dup.csv")) %>%
   mutate(
     firstDate = as.Date(firstDate),
     lastDate = as.Date(lastDate)
   )
 
 # Schedule of healthcare workers
-schedule_real = read.csv2(file.path(synthetic_path, "agenda.csv")) %>%
+schedule_real = read.csv2(file.path(synthetic_path, "agenda_no_dup.csv")) %>%
   mutate(
     firstDate = as_datetime(firstDate),
     lastDate = as_datetime(lastDate)
   )
 
 # Real interaction data
-interaction_real = read.csv2(file.path(synthetic_path, "interactions.csv")) %>%
+interaction_real = read.csv2(file.path(synthetic_path, "interactions_no_dup.csv")) %>%
   mutate(date_posix_first = as_datetime(date_posix_first))
 
 # Synthetic data
@@ -529,11 +529,13 @@ distrib_real = rbind(distrib_PAPA, distrib_PEPE, distrib_PAPE) %>%
   mutate(network = "Observed")
 
 # Prepare reconstructed data 
-for (prob in c("0", "0-1", "0-3", "0-5")) {
+for (prob in c("0-1", "0-5agenda", "0-5", "biased")) {
   dur_sim = data.frame()
   distrib_simu = data.frame()
   
-  for (f in list.files(file.path(synthetic_path, paste0("full_", prob)), "matContactBuilt", full.names = T)) {
+  to_read = ifelse(prob!="biased", paste0("full_", prob), prob)
+  
+  for (f in list.files(file.path(synthetic_path, to_read), "matContactBuilt", full.names = T)) {
    data = read.csv2(f)
   
     dur_sim = bind_rows(
@@ -696,9 +698,10 @@ graph_data = data %>%
   distinct() %>%
   arrange(date_posix)
 
-for (prob in c("0", "0-1", "0-3")) {
+for (prob in c("0-1", "0-5agenda", "0-5", "biased")) {
   
-  simu_files = list.files(path = file.path(synthetic_path, paste0("full_", prob)), pattern = "matContact.*", full.names = T)
+  to_read = ifelse(prob!="biased", paste0("full_", prob), prob)
+  simu_files = list.files(path = file.path(synthetic_path, to_read), pattern = "matContact.*", full.names = T)
 
   ## Reconstructed full #####
   
@@ -836,7 +839,7 @@ adm_data = admission %>%
 
 ## Reconstructed full #####
 
-simu_files = list.files(path = file.path(synthetic_path, "full_0"), pattern = "matContact.*", full.names = T)
+simu_files = list.files(path = file.path(synthetic_path, "full_0-5agenda"), pattern = "matContact.*", full.names = T)
 simu_data = data.frame()
 
 for (time_window in c("day", "week", "month", "full")) {
@@ -899,7 +902,7 @@ adm_data = admission %>%
 
 ## Reconstructed full #####
 
-simu_files = list.files(path = file.path(synthetic_path, "full_0"), pattern = "matContact.*", full.names = T)
+simu_files = list.files(path = file.path(synthetic_path, "full_0-5agenda"), pattern = "matContact.*", full.names = T)
 simu_data = data.frame()
 
 iter=1
