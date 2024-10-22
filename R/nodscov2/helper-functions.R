@@ -11,8 +11,17 @@ dict_cat = c("aux nurse" = "Paramedical",
              "ext physician" = "Medical",
              "physician" = "Medical")
 
+dict_scenarios = c("sim_1-4_20" = "Scenario 1",
+                   "sim_1-2_16" = "Scenario 2",
+                   "sim_3-4_12" = "Scenario 3",
+                   "sim_1_8" = "Scenario 4",
+                   "sim_3-2_5" = "Scenario 5"
+)
+
 # Plots-------------------------------------------------------------------------
-pal = c("Observed" = "darkorchid", "Reconstructed"= "darkorange")
+pal = c('Medical' = "#5CD6D6", 'Paramedical' = "#A9B9E8", 'Patient' = "#FFA766", 'Room' = "#666699")
+env_pal = c('Contact' = 'darkorange', 'Environment' =  'orchid')
+algo_syn_pal = c("Observed" = "darkorchid", "Reconstructed"= "darkorange")
 
 # Variables---------------------------------------------------------------------
 noon_day1 = as_datetime("2020-05-06 12:00:00")
@@ -44,7 +53,7 @@ unroll_days = function(df) {
   return(out)
 }
 
-# In a dataframe, cocnatenate rows that correspond to consecutive time periods
+# In a dataframe, concatenate rows that correspond to consecutive time periods
 concatenate_schedules = function(df) {
   out = df %>%
     arrange(firstDate) %>%
@@ -75,13 +84,7 @@ get_overlapping_contacts = function(df) {
   
   if (nrow(df) > 1) {
     for (i in 1:nrow(df)) {
-      
-      if ("date_posix_first" %in% colnames(df)) {
-        overlap = df$date_posix_first[i] >= df$date_posix_first & df$date_posix_first[i] <= df$date_posix_first+df$length
-      }      
-      if ("date_posix" %in% colnames(df)) {
-        overlap = df$date_posix[i] >= df$date_posix & df$date_posix[i] <= df$date_posix+df$length
-      }
+      overlap = df$date_posix[i] >= df$date_posix & df$date_posix[i] <= df$date_posix+df$length
       
       if (sum(overlap) > 1) {
         j = which(overlap)
@@ -101,7 +104,7 @@ fusion_overlapping_contacts = function(df) {
   if (nrow(df) > 1) {
     for (i in 1:nrow(df)) {
       
-      overlap = df$date_posix_first[i] >= df$date_posix_first & df$date_posix_first[i] <= df$date_posix_first+df$length
+      overlap = df$date_posix[i] >= df$date_posix & df$date_posix[i] <= df$date_posix+df$length
       
       if (sum(overlap) > 1) {
         # Contacts with overlap
@@ -109,14 +112,14 @@ fusion_overlapping_contacts = function(df) {
         j = j[j!=i]
         
         # Start of interaction
-        new_date_posix = min(df$date_posix_first[c(i,j)])
+        new_date_posix = min(df$date_posix[c(i,j)])
         
         # End of interaction
-        new_end = max(df$date_posix_first[c(i,j)] + df$length[c(i,j)])
+        new_end = max(df$date_posix[c(i,j)] + df$length[c(i,j)])
         new_length = as.numeric(difftime(new_end, new_date_posix, units = "sec"))
         
         # Replace date_posix and length
-        df$date_posix_first[c(i,j)] = new_date_posix
+        df$date_posix[c(i,j)] = new_date_posix
         df$length[c(i,j)] = new_length
       }
     }
@@ -157,10 +160,7 @@ get_net_metrics = function(graph_data, adm_data, iter = 0, network = "Observed")
     vertex_atts = data.frame(id = vertex_attr(graph_d, "name")) %>%
       left_join(adm_data, "id")
     graph_d = graph_d %>%
-      set_vertex_attr("cat", value = vertex_atts$cat) %>%
-      set_vertex_attr("cat_ag", value = vertex_atts$cat_ag) %>%
-      set_vertex_attr("staff", value = vertex_atts$staff) %>%
-      set_vertex_attr("ward", value = vertex_atts$ward)
+      set_vertex_attr("cat", value = vertex_atts$cat)
     
     data$degrees[i] = mean(degree(graph_d))
     data$densities[i] = edge_density(graph_d)
@@ -179,17 +179,14 @@ get_net_metrics = function(graph_data, adm_data, iter = 0, network = "Observed")
 }
 
 # Get the assortativity by degree
-get_assortativity_degree = function(graph_data, adm_data, iter = 0, network = "Observed", 
-                                    time_window){
+get_assortativity_degree = function(graph_data, adm_data, iter = 0, network = "Observed"){
   
   days = unique(graph_data$date_posix)
   
   data = data.frame(assortativities = rep(0, length(days)),
                     iter = iter,
                     network = network,
-                    day = days,
-                    time_window = time_window)
-  
+                    day = days)
   
   for(i in 1:length(days)){
     
@@ -202,10 +199,7 @@ get_assortativity_degree = function(graph_data, adm_data, iter = 0, network = "O
     vertex_atts = data.frame(id = vertex_attr(graph_d, "name")) %>%
       left_join(adm_data, "id")
     graph_d = graph_d %>%
-      set_vertex_attr("cat", value = vertex_atts$cat) %>%
-      set_vertex_attr("cat_ag", value = vertex_atts$cat_ag) %>%
-      set_vertex_attr("staff", value = vertex_atts$staff) %>%
-      set_vertex_attr("ward", value = vertex_atts$ward)
+      set_vertex_attr("cat", value = vertex_atts$cat) 
     
     data$assortativities[i] = assortativity_degree(graph_d, directed = F)
     
@@ -254,3 +248,35 @@ temporal_correlation = function(graph_data){
 
 
 
+
+# Functions for plots-----------------------------------------------------------
+# Get summary statistics of a simulated epidemic
+get_ss = function(df, n1, n2) {
+  
+  epidemic_curve = rep(0, 90*24*3600/30)
+  for (i in df$id[df$t_inf>0]) {
+    t_start = df$t_incub[df$id == i] 
+    t_end = df$t_recover[df$id == i]
+    epidemic_curve[t_start:t_end] = epidemic_curve[t_start:t_end] + 1
+  }
+  peak_time = which(epidemic_curve == max(epidemic_curve))
+  peak_time = ifelse(length(peak_time)>0, min(peak_time), peak_time) 
+  
+  out = data.frame(
+    couple = n1, 
+    sim_id = n2,
+    nind = length(unique(df$id)),
+    epidemic_duration = max(df$t_inf)/3600,
+    peak_time = peak_time / (60*2*24),
+    ninf_patients_c = sum(grepl("CONTACT", df$inf_by[df$id %in% id_patient])), 
+    ninf_patients_e = sum(grepl("ENVIRONMENT", df$inf_by[df$id %in% id_patient])),
+    ninf_para_c = sum(grepl("CONTACT", df$inf_by[df$id %in% id_paramedical])),
+    ninf_para_e = sum(grepl("ENVIRONMENT", df$inf_by[df$id %in% id_paramedical])),
+    ninf_med_c = sum(grepl("CONTACT", df$inf_by[df$id %in% id_medical])),
+    ninf_med_e = sum(grepl("ENVIRONMENT", df$inf_by[df$id %in% id_medical])),
+    ninf_c = sum(grepl("CONTACT", df$inf_by)),
+    ninf_e = sum(grepl("ENVIRONMENT", df$inf_by))
+  )
+  
+  return(out)
+}

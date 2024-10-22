@@ -16,6 +16,9 @@ library(lubridate)
 library(tidyr)
 library(viridis)
 library(purrr)
+library(igraph)
+library(ggtext)
+library(ggnetwork)
 rm(list = ls())
 
 # Source functions, dictionaries and helpful variables
@@ -26,6 +29,7 @@ source("scenarios-figures-supp.R")
 data_path = file.path("..", "..", "data")
 nodscov2_path = file.path("..", "..", "data", "data-nodscov2") 
 synthetic_path = file.path("..", "..", "data", "data-synthetic-graphs")
+fig_path = file.path("..", "..", "fig")
 ```
 
 ## Load Nods-CoV-2 data (not shared)
@@ -35,10 +39,27 @@ load(file.path(nodscov2_path, "admission_ctc_nodscov2.RData"))
 Encoding(admission$hospital) <- 'latin1'
 
 # Interactions 
-list_ward = read.csv(file.path(nodscov2_path, "list_ward_complete.csv"))
+list_ward = read.csv(file.path(nodscov2_path, "list_ward_complete.csv")) %>%
+  rename(date_posix = date_posix_first)
 
 # Sensor distribution 
 sensor = read.csv(file.path(nodscov2_path, "met_timespent_mins_complete.csv"))
+
+# Change id of individuals to add PA- or PE- suffix
+sensor = sensor %>% 
+  left_join(., admission %>% select(id, status), by = "id") %>%
+  mutate(id = paste0(status, "-", id)) %>%
+  select(-status)
+
+list_ward = list_ward %>%
+  left_join(., admission %>% select(id, status), by = c("from"="id")) %>%
+  mutate(from = paste0(status, "-", from)) %>%
+  select(-status) %>%
+  left_join(., admission %>% select(id, status), by = c("to"="id")) %>%
+  mutate(to = paste0(status, "-", to)) %>%
+  select(-status)
+
+admission = admission %>% mutate(id = paste0(status, "-", id))
 ```
 
 ## Initial composition of Raymond Poincaré ICU
@@ -72,7 +93,7 @@ admission_nodscov2 = admission %>%
   mutate(cat = recode(cat, !!!dict_cat)) %>%
   mutate(cat = ifelse(is.na(cat), "Patient", cat)) %>%
   select(-hospital)
-nrow(admission_nodscov2)
+nrow(admission_nodscov2) # Number of individuals in the database after filtering
 
 # Sensor distribution data 
 # Keep individuals from the ICU of Raymond Poincaré
@@ -97,11 +118,7 @@ sensor_nodscov2 = sensor %>%
   inner_join(., admission_nodscov2 %>% select(id, status, cat), by = "id") %>%
   select(id, status, cat, ward, firstDate_sensor, lastDate_sensor) %>%
   filter(!is.na(lastDate_sensor), !is.na(firstDate_sensor))
-  # filter(!(lastDate_sensor <= noon_day1 | firstDate_sensor >= noon_day2)) %>%
-  # mutate(
-  #   firstDate_sensor = case_when(firstDate_sensor <= noon_day1 ~ noon_day1, .default = firstDate_sensor),
-  #   lastDate_sensor = case_when(lastDate_sensor >= noon_day2 ~ noon_day2, .default = lastDate_sensor)
-  # )
+
 length(unique(admission_nodscov2$id)) - length(unique(sensor_nodscov2$id)) # Individuals with no sensor during the study period
 ```
 
@@ -109,16 +126,14 @@ length(unique(admission_nodscov2$id)) - length(unique(sensor_nodscov2$id)) # Ind
 ```{r}
 # Rearrange interaction data 
 verify_pair_distribution = list_ward %>%
-  mutate(date_posix_first = as_datetime(date_posix_first)) %>%
+  mutate(date_posix = as_datetime(date_posix)) %>%
   filter(
     # Raymond Poincaré ICU
     newID == "Medical ICU #1",
     # Only categories of interest
     from %in% sensor_nodscov2$id, to %in% sensor_nodscov2$id,
-    # Interactions that occur before or after the 24 hour period
-    # !(date_posix_first+length <= noon_day1 | date_posix_first >= noon_day2)
     ) %>%
-  group_by(from, to, date_posix_first, ward_id, wardType, newID) %>%
+  group_by(from, to, date_posix, ward_id, wardType, newID) %>%
   summarise(length = max(length), .groups = "drop") %>%
   distinct() %>%
   mutate(id = 1:n()) %>%
@@ -134,32 +149,30 @@ verify_pair_distribution %>%
   filter(n>1) %>%
   nrow()
 
-# Get number of overlapping contacts
+# Get number of overlapping contacts (duplicates and starting at the same time are not included)
 verify_pair_distribution %>%
-  distinct(from, to, pair) %>%
-  group_by(pair) %>%
-  mutate(n = n()) %>%
-  filter(n>1) %>%
+  nest(.by = c(from, to, ward_id, wardType, newID)) %>%
+  mutate(data = map(data, get_overlapping_contacts)) %>%
+  unnest(data) %>%
+  filter(overlap == T) %>%
   nrow()
 
-# Save duplicated interactions 
+# Save overlapping and duplicated contacts
 list_ward %>%
-  mutate(date_posix_first = as_datetime(date_posix_first)) %>%
+  mutate(date_posix = as_datetime(date_posix)) %>%
   filter(
     # Raymond Poincaré ICU
     newID == "Medical ICU #1",
     # Only categories of interest
-    from %in% sensor_nodscov2$id, to %in% sensor_nodscov2$id,
-    # Interactions that occur before or after the 24 hour period
-    # !(date_posix_first+length <= noon_day1 | date_posix_first >= noon_day2)
+    from %in% sensor_nodscov2$id, to %in% sensor_nodscov2$id
     ) %>%
-  group_by(from, to, date_posix_first, ward_id, wardType, newID) %>%
-  mutate(n = n()) %>%
-  filter(n>1) %>%
-  arrange(from, to, date_posix_first) %>%
-  write.csv2(file.path(synthetic_path, "duplicates_contacts.csv"), quote = F, row.names = F)
-
-# Overlapping contacts
+  nest(.by = c(from, to, ward_id, wardType, newID)) %>%
+  mutate(data = map(data, get_overlapping_contacts)) %>%
+  unnest(data) %>%
+  filter(overlap == T) %>%
+  arrange(from, to, date_posix) %>%
+  select(from, to, date_posix, length, ward_id, wardType, newID) %>%
+  write.csv2(file.path(synthetic_path, "duplicated_and_overlaping_contacts.csv"), quote = F, row.names = F)
 
 ```
 
@@ -167,17 +180,15 @@ list_ward %>%
 ````{r}
 # Interaction data from Raymond Poincaré
 interaction_nodscov2 = list_ward %>%
-  mutate(date_posix_first = as_datetime(date_posix_first)) %>%
+  mutate(date_posix = as_datetime(date_posix)) %>%
   filter(
     # Raymond Poincaré ICU
     newID == "Medical ICU #1",
     # Only categories of interest
-    from %in% sensor_nodscov2$id, to %in% sensor_nodscov2$id,
-    # Interactions that occur before or after the 24 hour period
-    # !(date_posix_first+length <= noon_day1 | date_posix_first >= noon_day2)
+    from %in% sensor_nodscov2$id, to %in% sensor_nodscov2$id
     ) %>%
   # Keep longest contacts when several start at the same time for a specific pair of participants
-  group_by(from, to, date_posix_first, ward_id, wardType, newID) %>%
+  group_by(from, to, date_posix, ward_id, wardType, newID) %>%
   summarise(length = max(length), .groups = "drop") %>%
   # Remove duplicates 
   distinct() %>%
@@ -187,11 +198,11 @@ interaction_nodscov2 = list_ward %>%
   unnest(data) %>%
   distinct() %>%
   # Reorder columns 
-  select(from, to, date_posix_first, length, ward_id, wardType, newID)
+  select(from, to, date_posix, length, ward_id, wardType, newID)
 
 interaction_first_last = interaction_nodscov2 %>%
-  mutate(date_day = as.Date(floor_date(date_posix_first, "day")),
-         date_day_end = as.Date(floor_date(date_posix_first+length, "day"))) %>%
+  mutate(date_day = as.Date(floor_date(date_posix, "day")),
+         date_day_end = as.Date(floor_date(date_posix+length, "day"))) %>%
   pivot_longer(cols = c(from, to), values_to = "id") %>%
   group_by(id) %>%
   summarise(firstDate_interaction = min(date_day), lastDate_interaction = max(date_day_end))
@@ -218,32 +229,15 @@ admission_nodscov2 = admission_nodscov2 %>%
   inner_join(., sensor_nodscov2 %>% 
                select(id, firstDate_sensor, lastDate_sensor) %>%
                group_by(id) %>%
-               summarise(firstDate_sensor = min(firstDate_sensor), 
-                         lastDate_sensor = max(lastDate_sensor), 
+               summarise(firstDate_sensor = as_date(floor_date(min(firstDate_sensor), "day")), 
+                         lastDate_sensor = as_date(floor_date(max(lastDate_sensor), "day")), 
                          .groups = "drop"), 
              by = "id") %>%
   rename(firstDate = firstDate_sensor, lastDate = lastDate_sensor) %>%
   select(id, status, firstDate, lastDate, ward, sex, hospitalization, cat)
 
-# Trim data to keep only 24 hours of interactions
-# interaction_nodscov2 = interaction_nodscov2 %>%
-#   mutate(
-#     length = case_when(
-#       date_posix_first <= noon_day1 ~ as.numeric(difftime(date_posix_first+length, noon_day1, units = "sec")),
-#       date_posix_first+length >= noon_day2 ~ as.numeric(difftime(noon_day2, date_posix_first, units = "sec")),
-#       .default = length 
-#     ),
-#     date_posix_first = case_when(
-#       date_posix_first <= noon_day1 ~ noon_day1,
-#       .default = date_posix_first
-#     )
-#   )
-
 # Verify that we have the same participants in all three databases
-identical(
-  sort(unique(admission_nodscov2$id)),
-  sort(unique(sensor_nodscov2$id))
-)
+identical(sort(unique(admission_nodscov2$id)), sort(unique(sensor_nodscov2$id)))
 all(c(interaction_nodscov2$from, interaction_nodscov2$to) %in% admission_nodscov2$id)
 
 # Agenda of healthcare workers
@@ -264,15 +258,14 @@ admission_nodscov2 %>%
 
 ```
 
-
-## Frequency of contacts of more than one hour
+### Frequency of contacts of more than one hour
 ```{r file for synthetic data algo}
 # Frequency of contacts that last more than 1hour
 interaction_nodscov2 %>%
   summarise(
     n = n(), 
     n_more_1h = sum(length/3600 >= 1),
-    p = sum(length/3600 >= 1) / n() * 100
+    percentage = sum(length/3600 >= 1) / n() * 100
     )
 
 # Distribution of contact duration for contacts lasting more than 1h
@@ -283,7 +276,7 @@ interaction_nodscov2 %>%
   summary()
 ```
 
-## Contact recurrence probability per hour
+### Contact recurrence probability per hour
 ```{r contact recurrence by hour}
 # Hourly individual probability of recurring contacts and mean individual
 # probability
@@ -310,7 +303,7 @@ for (i in seq_along(admission_nodscov2$id)) {
     for (h in seq_along(all_h)) {
       hh = all_h[h]
       contacts = interaction_nodscov2 %>%
-        filter(from == ii | to == ii, date_posix_first >= hh, date_posix_first < hh+3600) %>%
+        filter(from == ii | to == ii, date_posix >= hh, date_posix < hh+3600) %>%
         select(from, to) %>%
         unlist()
       contacts = unique(contacts[contacts != ii])
@@ -365,7 +358,7 @@ admission_nodscov2 %>%
   summarise(m = mean(pind), .groups = "drop")
 ```
 
-## Contact recurrence probability per day
+### Contact recurrence probability per day
 ```{r contact recurrence by hour}
 # Daily individual probability of recurring contacts and mean individual
 # probability
@@ -392,7 +385,7 @@ for (i in seq_along(admission_nodscov2$id)) {
     for (d in seq_along(all_d)) {
       dd = all_d[d]
       contacts = interaction_nodscov2 %>%
-        filter(from == ii | to == ii, date_posix_first >= dd, date_posix_first < dd+3600*24) %>%
+        filter(from == ii | to == ii, date_posix >= dd, date_posix < dd+3600*24) %>%
         select(from, to) %>%
         unlist()
       contacts = unique(contacts[contacts != ii])
@@ -449,7 +442,7 @@ admission_nodscov2 %>%
   summarise(m = mean(pind, na.rm = T), .groups = "drop")
 ```
 
-## Patient augmentation
+### Patient augmentation
 ```{r patient augmentation}
 # Double rooms - Cumulative time
 patients_ids = unique(admission_nodscov2$id[admission_nodscov2$status == "PA"])
@@ -464,6 +457,7 @@ double_rooms = interaction_nodscov2 %>%
   filter(from %in% patients_ids, to %in% patients_ids) %>%
   distinct(from, to)
 double_rooms = as.list(as.data.frame(t(double_rooms)))
+save(double_rooms, file = file.path(synthetic_path, "double_rooms.rda"))
 
 # Patient rooms
 patient_rooms = data.frame(
@@ -471,30 +465,31 @@ patient_rooms = data.frame(
   room = 1:sum(admission_nodscov2$status == "PA")
 )
 patient_rooms$room[patient_rooms$id %in% double_rooms[[1]]] = min(patient_rooms$room[patient_rooms$id %in% double_rooms[[1]]])
+patient_rooms$room[patient_rooms$id %in% double_rooms[[2]]] = min(patient_rooms$room[patient_rooms$id %in% double_rooms[[2]]])
 
 # Patient augmentation
 set.seed(20240924)
 for (id in patients_ids) {
   
   # Stay length of original individual
-  if (as.Date(floor_date(admission_nodscov2$lastDate[admission_nodscov2$id == id])) == as.Date("2020-05-07")) {
+  if (as_date(floor_date(admission_nodscov2$lastDate[admission_nodscov2$id == id], "day")) == as_date("2020-05-07")) {
     stay_length = sample(6:13, 1)
-    new_lastDate = as_datetime("2020-05-06 12:00:00") + stay_length*3600*24
+    new_lastDate = as_date("2020-05-06") + stay_length
     admission_nodscov2$lastDate[admission_nodscov2$id == id] = new_lastDate
   } else {
-    new_lastDate = as_datetime("2020-05-06 12:00:00")
+    new_lastDate = as_date("2020-05-06")
   }
   
-  # Augment patients by keeping the incrementing the original id
+  # Augment patients by keeping incrementing the original id
   i = 1
   new_room = data.frame()
-  while(new_lastDate < noon_last_day) {
+  while(new_lastDate < as_date(floor_date(noon_last_day, "day"))) {
     stay_length = sample(6:13, 1)
     to_rbind = data.frame(
       id = paste0(id, "-", i),
       status = "PA",
-      firstDate = new_lastDate,
-      lastDate = min(new_lastDate+stay_length*3600*24, noon_last_day),
+      firstDate = new_lastDate+1,
+      lastDate = min(new_lastDate+1+stay_length, as_date(floor_date(noon_last_day, "day"))),
       ward = "Reanimation",
       sex = NA,
       hospitalization = "patient",
@@ -510,7 +505,7 @@ for (id in patients_ids) {
     )
     
     admission_nodscov2 = rbind(admission_nodscov2, to_rbind)
-    new_lastDate = min(new_lastDate+stay_length*3600*24, noon_last_day)
+    new_lastDate = min(new_lastDate+1+stay_length, as_date(floor_date(noon_last_day, "day")))
     i = i+1
   }
 }
@@ -519,15 +514,17 @@ for (id in patients_ids) {
 admission_nodscov2 %>%
   group_by(status, cat) %>%
   summarise(n = n(), .groups = "drop") 
+
 ```
 
-## Repeat schedule of HCWs over the 90-day period
+### Repeat schedule of HCWs over the 90-day period
 ```{r repeat schedule}
 # Repeat schedule over 90 days
 new_agenda = agenda_nodscov2
 for (d in 1:90) {
-  new_agenda = rbind(new_agenda, agenda_nodscov2 %>% mutate(firstDate = firstDate+3600*24*d,
-                                                            lastDate = lastDate+3600*24*d))
+  new_agenda = rbind(
+    new_agenda, 
+    agenda_nodscov2 %>% mutate(firstDate = firstDate+3600*24*d, lastDate = lastDate+3600*24*d))
 }
 
 new_agenda = new_agenda %>%
@@ -544,14 +541,10 @@ new_agenda = new_agenda %>%
 # Get new admission dates for HCWs
 new_admission_dates = new_agenda %>%
   group_by(id) %>%
-  summarise(firstDate_new = as.Date(cut.POSIXt(min(firstDate), "day")),
-            lastDate_new = as.Date(cut.POSIXt(max(lastDate), "day")),
-            .groups = "drop")
+  summarise(firstDate_new = as_date(floor_date(min(firstDate), "day")), 
+            lastDate_new = as_date(floor_date(max(lastDate), "day")), .groups = "drop")
 
 # Verify coherence and change admission dates for HCWs
-# admission_nodscov2 %>%
-#   left_join(., new_admission_dates, by = "id") %>%
-#   filter(firstDate > firstDate_new | lastDate > lastDate_new)
 admission_nodscov2 = admission_nodscov2 %>%
   left_join(., new_admission_dates, by = "id") %>%
   mutate(
@@ -562,41 +555,7 @@ admission_nodscov2 = admission_nodscov2 %>%
 
 ```
 
-## Change IDs of individuals to integrate PA or PE at the start of each ID 
-```{r change ids}
-# This is a necessary step for the synthetic contact algorithm
-# Interaction data
-interaction_nodscov2 = interaction_nodscov2 %>%
-  mutate(
-    from = case_when(
-      from %in% admission_nodscov2$id[admission_nodscov2$status == "PA"] ~ paste0("PA-", from),
-      from %in% admission_nodscov2$id[admission_nodscov2$status == "PE"] ~ paste0("PE-", from)
-    ),
-    to = case_when(
-      to %in% admission_nodscov2$id[admission_nodscov2$status == "PA"] ~ paste0("PA-", to),
-      to %in% admission_nodscov2$id[admission_nodscov2$status == "PE"] ~ paste0("PE-", to)
-    )
-  ) %>%
-  arrange(date_posix_first)
-
-# Admission data
-admission_nodscov2 = admission_nodscov2 %>%
-  mutate(id = paste0(status, "-", id)) %>%
-  mutate(firstDate = floor_date(firstDate, "day"), lastDate = floor_date(lastDate, "day")) %>%
-  arrange(firstDate)
-
-# Patient rooms
-patient_rooms = patient_rooms %>%
-  mutate(id = paste0("PA-", id)) 
-
-# HCW schedule
-new_agenda = new_agenda %>%
-  mutate(id = paste0(status, "-", id)) %>% 
-  arrange(firstDate)
-
-```
-
-## Verify the concordance between contacts and the schedule of healthcare workers
+### Verify the concordance between contacts and the schedule of healthcare workers
 ```{r}
 # Schedule of healthcare workers 
 ids_pe = admission_nodscov2$id[admission_nodscov2$status == "PE"]
@@ -604,15 +563,15 @@ interactions_in_schedule = data.frame()
 
 for (i in ids_pe) {
   # Schedule of the HCW
-  schedule_id = new_agenda %>%
-    filter(id == i, lastDate <= as_datetime("2020-05-07 12:00:00")) %>%
+  schedule_id = agenda_nodscov2 %>%
+    filter(id == i) %>%
     select(firstDate, lastDate)
   
   # Get all interactions
   if (sum(interaction_nodscov2$to == i | interaction_nodscov2$from == i) > 0) {
     interactions_id = interaction_nodscov2 %>%
       filter(from == i| to == i) %>%
-      select(date_posix_first, length) %>%
+      select(date_posix, length) %>%
       mutate(n = 1:n())
   
     # Are all interactions within the schedule ?
@@ -621,7 +580,7 @@ for (i in ids_pe) {
       interactions_id
     ) %>%
       group_by(n) %>%
-      summarise(out = any(date_posix_first >= firstDate & date_posix_first+length <= lastDate), .groups = "drop") %>%
+      summarise(out = any(date_posix >= firstDate & date_posix+length <= lastDate), .groups = "drop") %>%
       pull(out)
     
     interactions_in_schedule = bind_rows(
@@ -643,12 +602,18 @@ for (i in ids_pe) {
   }
 }
 
+# Number of HCW
+admission_nodscov2 %>% filter(status == "PE") %>% nrow()
+
+# Individuals with all interactions within schedule
 sum(interactions_in_schedule$coherent_interactions, na.rm = T)
+
+# Individuals with missing interactions
 sum(is.na(interactions_in_schedule$coherent_interactions))
 ```
 
 
-## Save data for synthetic algorithm
+### Save data for synthetic algorithm
 ```{r save synthetic}
 # Interaction data
 write.csv2(interaction_nodscov2, file.path(synthetic_path, "interactions.csv"), quote = F, row.names = F)
@@ -663,149 +628,12 @@ write.csv2(new_agenda, file.path(synthetic_path, "agenda.csv"),  quote = F, row.
 write.csv2(patient_rooms, file.path(synthetic_path, "patient_rooms.csv"), quote = F, row.names = F)
 ```
 
-
-## Pool data over one day
-```{r save synthetic}
-# Change interactions
-interaction_morning1 = interaction_nodscov2 %>%
-  filter(date_posix_first+length >= midnight_day2) %>%
-  mutate(date_posix_first = date_posix_first-3600*24) %>%
-  mutate(
-    date_posix = case_when(date_posix_first < midnight_day1 ~ midnight_day1, .default = date_posix_first),
-    length = case_when(date_posix_first < midnight_day1 ~ as.numeric(date_posix_first+length-midnight_day1), .default = length)
-  ) %>%
-  arrange(date_posix) %>%
-  select(-date_posix_first)
-
-interaction_pooled = interaction_nodscov2 %>%
-  rename(date_posix = date_posix_first) %>%
-  filter(date_posix < midnight_day2) %>%
-  mutate(
-    length = case_when(date_posix+length >= midnight_day2 ~ as.numeric(midnight_day2-date_posix), .default = length)
-  ) %>%
-  bind_rows(., interaction_morning1) %>%
-  arrange(date_posix) 
-
-# Add morning of day2 as morning of day 1 in the schedule
-# and remove the last half day
-agenda_pooled_to_add = new_agenda %>%
-  filter(lastDate <= noon_day2, lastDate >= midnight_day2) %>%
-  mutate(
-    firstDate = case_when(
-      firstDate < midnight_day2 ~ midnight_day1,
-      firstDate >= midnight_day2 ~ firstDate - 24 *3600
-    ),
-    lastDate = lastDate - 24*3600
-    ) %>%
-  arrange(firstDate)
-  
-agenda_pooled = bind_rows(agenda_pooled_to_add, new_agenda) %>%
-  filter(firstDate < floor_date(noon_last_day, "day")) %>%
-  mutate(
-    lastDate = case_when(lastDate >= midnight_last_day ~ midnight_last_day, .default = lastDate)
-  ) %>%
-  arrange(firstDate)
-
-agenda_pooled %>% filter(firstDate > lastDate) %>% nrow()
-
-# Check that all real patients are included on 2020-05-06
-# same for HCW that are equipped with a sensor on 2020-05-07
-admission_nodscov2 %>%
-  filter(status == "PA", !grepl("PA.*-[0-9]+$", id), firstDate != as_datetime("2020-05-06 12:00:00"))
-
-admission_pooled = admission_nodscov2 %>%
-  arrange(id, status)
-
-for (i in admission_pooled$id[admission_pooled$status == "PE"]) {
-  admission_pooled$firstDate[admission_pooled$id == i] = min(floor_date(agenda_pooled$firstDate[agenda_pooled$id == i], "day"))
-  admission_pooled$lastDate[admission_pooled$id == i] = max(floor_date(agenda_pooled$lastDate[agenda_pooled$id == i], "day"))
-}
-
-# Save pooled data
-# Interaction data
-interaction_pooled %>%
-  mutate(date_posix = as.character(format(date_posix))) %>%
-  write.csv2(., file.path(synthetic_path, "interactions_pooled.csv"), quote = F, row.names = F)
-
-# Admission data
-write.csv2(admission_pooled, file.path(synthetic_path, "admission_pooled.csv"), quote = F, row.names = F)
-
-# HCW schedule
-agenda_pooled %>%
-  mutate(firstDate = as.character(format(firstDate)), lastDate = as.character(format(lastDate))) %>%
-  write.csv2(., file.path(synthetic_path, "agenda_pooled.csv"),  quote = F, row.names = F)
-```
-
 ## Plot raw data for supplementary materials
-### Before filtration
-```{r plots before filtration}
-# Number of individuals by category
-admission_full = admission %>%
-  filter(hospital == "APHP - RAYMOND POINCARÉ", ward == "Reanimation", !cat %in% "investigation") %>%
-  mutate(cat = case_when(is.na(cat) ~ "Patient",
-                         cat %in% cat_paramedical ~ "Paramedical",
-                         cat %in% cat_medical ~ "Medical",
-                         .default = stringr::str_to_title(cat)
-                         )) 
-p1 = admission_full %>%
-  group_by(cat) %>% 
-  summarise(n =n()) %>% 
-  ggplot(., aes(x = cat, y = n, fill = cat)) + 
-  geom_bar(stat = "identity", width = 0.5) + 
-  scale_fill_manual(values = pal) +
-  theme_bw() + 
-  theme(legend.position = "none") +
-  labs(x = "", y = "Number of individuals")
-  
-# Number of interactions
-p2 = list_ward %>%
-  filter(newID == "Medical ICU #1") %>%
-  left_join(., admission_full %>% select(id, cat) %>% rename(cat_from = cat), by = c("from" = "id")) %>%
-  left_join(., admission_full %>% select(id, cat) %>% rename(cat_to = cat), by = c("to" = "id")) %>%
-  filter(!is.na(cat_to), !is.na(cat_from)) %>%
-  mutate(cat_from = case_when(cat_from %in% c("Paramedical", "Medical") ~ "HCW",
-                              !cat_from %in% c("Patient", "Paramedical", "Medical") ~ "Other",
-                              .default = cat_from), 
-         cat_to = case_when(cat_to %in% c("Paramedical", "Medical") ~ "HCW",
-                              !cat_to %in% c("Patient", "Paramedical", "Medical") ~ "Other",
-                              .default = cat_to),
-         date_posix_first = as_datetime(date_posix_first)
-         ) %>%
-  mutate(cat_pair = case_when(
-    cat_from == "Patient" & cat_to == "Patient" ~ "Patient-Patient",
-    (cat_from == "Patient" & cat_to == "HCW") | (cat_from == "HCW" & cat_to == "Patient") ~ "Patient-HCW",
-    (cat_from == "Patient" & cat_to == "Other") | (cat_from == "Other" & cat_to == "Patient") ~ "Patient-Other",
-    (cat_from == "HCW" & cat_to == "Other") | (cat_from == "Other" & cat_to == "HCW") ~ "HCW-Other",
-    cat_from == "HCW" & cat_to == "HCW" ~ "HCW-HCW",
-    cat_from == "Other" & cat_to == "Other" ~ "Other-Other"
-    )) %>%
-  filter(cat_pair != "Patient-Patient") %>%
-  mutate(id_pair = 1:n()) %>%
-  group_by(id_pair, from, to, cat_pair, date_posix_first) %>%
-  nest() %>%
-  mutate(out = map2(data, date_posix_first, function(.x, .y) data.frame(interacting = seq.POSIXt(.y, .y+.x$length, 10)))) %>%
-  ungroup() %>%
-  select(-data) %>%
-  unnest(cols = out) %>%
-  group_by(cat_pair, interacting) %>%
-  summarise(n =n(), .groups = "drop") %>%
-  ggplot(., aes(x= interacting, y = n, col = cat_pair)) +
-  geom_line() +
-  theme_bw() +
-  theme(legend.position = "bottom") +
-  scale_color_manual(values = c("Patient-HCW" = "orange", "HCW-HCW" = "orchid", 
-                                "Patient-Other" = "black", "HCW-Other" = "grey80", "Other-Other" = "cornflowerblue")) +
-  labs(x = "Time", y="Number of interactions", col = "Type of interaction")
-
-# Combined plot
-ggarrange(p1, p2, ncol = 2, align = "hv", widths = c(1,2), labels = c("A", "B"))
-
-# Interaction network 
-
-```
-
-### After filtration
+### Participant description
 ```{r plots after filtration}
+# Create directory to store figures
+if (!dir.exists(file.path(fig_path, "nodscov2-data"))) dir.create(file.path(fig_path, "nodscov2-data"))
+
 # Number of individuals by category
 p1 = admission_nodscov2 %>% 
   group_by(cat) %>% 
@@ -814,7 +642,7 @@ p1 = admission_nodscov2 %>%
   geom_bar(stat = "identity", width = 0.5) + 
   scale_fill_manual(values = pal) +
   theme_bw() + 
-  theme(legend.position = "none") +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 30, hjust = 1)) +
   labs(x = "", y = "Number of individuals")
   
 # Number of interactions
@@ -828,9 +656,9 @@ p2 = interaction_nodscov2 %>%
     ),
     id_pair = 1:n()) %>%
   filter(cat_pair != "Patient-Patient") %>%
-  group_by(id_pair, from, to, cat_pair, date_posix_first) %>%
+  group_by(id_pair, from, to, cat_pair, date_posix) %>%
   nest() %>%
-  mutate(out = map2(data, date_posix_first, function(.x, .y) data.frame(interacting = seq.POSIXt(.y, .y+.x$length, 10)))) %>%
+  mutate(out = map2(data, date_posix, function(.x, .y) data.frame(interacting = seq.POSIXt(.y, .y+.x$length, 10)))) %>%
   ungroup() %>%
   select(-data) %>%
   unnest(cols = out) %>%
@@ -840,4 +668,170 @@ p2 = interaction_nodscov2 %>%
   geom_line() +
   theme_bw() +
   theme(legend.position = "bottom") +
-  scale_color_manual(values = c
+  scale_color_manual(values = c("Patient-HCW" = "orange", "HCW-HCW" = "orchid")) +
+  labs(x = "Time", y="Number of interactions", col = "Type of interaction")
+ggsave(file.path(fig_path, "nodscov2-data", "interactions.png"), p2, height = 4, width = 10)
+
+# Combined plot
+p = ggarrange(p1, p2, ncol = 2, align = "hv", widths = c(1,4), labels = c("A", "B"))
+ggsave(file.path(fig_path, "nodscov2-data", "interactions_combined.png"), p, height = 4, width = 10)
+```
+
+### Plot interaction network
+```{r}
+# Create network objects
+graph_data = interaction_nodscov2 %>%
+  mutate(date_posix = floor_date(date_posix, "day")) %>%
+  group_by(from, to, date_posix) %>%
+  summarise(length = sum(length), .groups = "drop") %>%
+  arrange(date_posix)
+
+graph_data_PA_PA = graph_data %>%
+  filter(grepl("PA-", from) & grepl("PA-", to))
+
+graph_data_PE_PE = graph_data %>%
+  filter(grepl("PE-", from) & grepl("PE-", to))
+
+graph_data_PA_PE = graph_data %>%
+  filter((grepl("PE-", from) & grepl("PA-", to)) | (grepl("PA-", from) & grepl("PE-", to)))
+
+# Get all metrics 
+all_metrics = get_net_metrics(graph_data, adm_data = admission_nodscov2, network = "Full")
+PA_PA_metrics = get_net_metrics(graph_data_PA_PA, adm_data = admission_nodscov2, network = "PA-PA")
+PE_PE_metrics = get_net_metrics(graph_data_PE_PE, adm_data = admission_nodscov2, network = "PE-PE")
+PA_PE_metrics = get_net_metrics(graph_data_PA_PE, adm_data = admission_nodscov2, network = "PA-PE")
+
+# Summary statistics of full grpah and subgraphs
+cols = colnames(all_metrics)[1:7]
+summary_tab = rbind(all_metrics, PA_PA_metrics, PE_PE_metrics, PA_PE_metrics) %>%
+  mutate(temp_corr = replace(temp_corr, temp_corr==0, NA)) %>%
+  group_by(network) %>%
+  summarise(across(all_of(cols), list(mean=mean, sd=sd), na.rm=T))
+
+summary_tab[,-1] = round(summary_tab[,-1], 2)
+View(summary_tab)
+
+# Get all degrees
+all_degrees = c()
+for(d in unique(graph_data$date_posix)){
+  data_d = graph_data %>%
+    filter(date_posix == d)
+  
+  graph_d = graph_from_data_frame(data_d, directed = F)
+  graph_d = simplify(graph_d)
+  all_degrees = c(all_degrees, degree(graph_d))
+}
+
+# Distribution of daily number of degrees (dashed red line = mean degree)
+# CV: coefficient of variation (standard deviation/mean)
+pe = ggplot() +
+  geom_histogram(aes(all_degrees, after_stat(density)), binwidth = 1, colour = "grey") +
+  geom_vline(xintercept = mean(all_degrees), linetype = "dashed", linewidth = 1, colour = "red3") +
+  geom_richtext(aes(x = 35, y = 0.05,
+                    label = paste0("CV<sup>2</sup> = ",
+                                   round((sd(all_degrees)/mean(all_degrees))^2, 3))),
+                colour = "red3", size = 6) +
+  theme_bw() +
+  labs(x = "Node degree", y = "Frequency") +
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12)) +
+  scale_x_continuous(breaks = seq(0,40,10))
+
+
+# Full graph
+example_date = as_datetime("2020-05-06 00:00:00")
+example_data = graph_data %>%
+  filter(date_posix == example_date)
+graph_example = graph_from_data_frame(example_data, directed = F)
+graph_example = simplify(graph_example)
+
+vertex_atts = data.frame(id = get.vertex.attribute(graph_example, "name")) %>%
+  left_join(admission_nodscov2, "id")
+
+graph_example = graph_example %>%
+  set_vertex_attr("cat", value = vertex_atts$cat)
+
+pa = ggplot(ggnetwork(graph_example, layout = igraph::layout_with_kk(graph_example)),
+            aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(alpha = 0.5) +
+  geom_nodes(aes(colour = cat), size = 4) +
+  theme_blank() +
+  scale_colour_discrete(type = pal) +
+  labs(colour = "Category:") +
+  theme(legend.text = element_text(size=12))
+
+# PA-PA subgraph
+graph_example_PA_PA = graph_from_data_frame(graph_data_PA_PA %>% filter(date_posix == example_date),
+                                            directed = F)
+graph_example_PA_PA = simplify(graph_example_PA_PA)
+
+vertex_atts = data.frame(id = get.vertex.attribute(graph_example_PA_PA, "name")) %>%
+  left_join(admission_nodscov2, "id")
+
+graph_example_PA_PA = graph_example_PA_PA %>%
+  set_vertex_attr("cat", value = vertex_atts$cat) 
+
+pb = ggplot(ggnetwork(graph_example_PA_PA, layout = igraph::layout_with_kk(graph_example_PA_PA)),
+            aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(alpha = 0.5) +
+  geom_nodes(aes(colour = cat), size = 3) +
+  theme_blank() +
+  scale_colour_discrete(type = pal["Patient"]) +
+  labs(colour = "Category:") +
+  theme(legend.text = element_text(size=12)) +
+  guides(colour = "none")
+
+# PE-PE subgraph
+graph_example_PE_PE = graph_from_data_frame(graph_data_PE_PE %>% filter(date_posix == example_date),
+                                            directed = F)
+graph_example_PE_PE = simplify(graph_example_PE_PE)
+
+vertex_atts = data.frame(id = get.vertex.attribute(graph_example_PE_PE, "name")) %>%
+  left_join(admission_nodscov2, "id") 
+
+graph_example_PE_PE = graph_example_PE_PE %>%
+  set_vertex_attr("cat", value = vertex_atts$cat) 
+
+pc = ggplot(ggnetwork(graph_example_PE_PE, layout = igraph::layout_with_kk(graph_example_PE_PE)),
+            aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(alpha = 0.5) +
+  geom_nodes(aes(colour = cat), size = 3) +
+  theme_blank() +
+  scale_colour_discrete(type = pal[c("Medical", "Paramedical")]) +
+  labs(colour = "Category:") +
+  theme(legend.text = element_text(size=12)) +
+  guides(colour = "none")
+
+# PA-PE subgraph
+graph_example_PA_PE = graph_from_data_frame(graph_data_PA_PE %>% filter(date_posix == example_date),
+                                            directed = F)
+graph_example_PA_PE = simplify(graph_example_PA_PE)
+
+vertex_atts = data.frame(id = get.vertex.attribute(graph_example_PA_PE, "name")) %>%
+  left_join(admission_nodscov2, "id")
+
+graph_example_PA_PE = graph_example_PA_PE %>%
+  set_vertex_attr("cat", value = vertex_atts$cat)
+
+pd = ggplot(ggnetwork(graph_example_PA_PE, layout = igraph::layout_with_kk(graph_example_PA_PE)),
+            aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(alpha = 0.5) +
+  geom_nodes(aes(colour = cat), size = 3) +
+  theme_blank() +
+  scale_colour_discrete(type = pal) +
+  labs(colour = "Category:") +
+  theme(legend.text = element_text(size=12)) +
+  guides(colour = "none")
+
+# Final plot
+p = ggarrange(pa,
+              ggarrange(pb,pc,pd, nrow=1, labels = c("B", "C", "D")),
+              pe, 
+              heights = c(1,0.7,0.5), 
+              ncol = 1, 
+              labels = c("A", "", "E"))
+
+ggsave(file.path(fig_path, "nodscov2-data", "network_subnetworks.png"), p, height = 12, width = 10)
+
+```
+

@@ -21,31 +21,33 @@ source("helper-functions.R")
 
 # Working directories and paths
 synthetic_path = file.path("..", "..", "data", "data-synthetic-graphs")
+fig_path = file.path("..", "..", "fig", "network_comparison")
+if (!dir.exists(fig_path)) dir.create(fig_path)
 ```
 
 ## Load real and synthetic contact data
 ```{r data loading, echo = FALSE}
 # List of individuals 
-admission = read.csv2(file.path(synthetic_path, "admission_no_dup.csv")) %>%
+admission = read.csv2(file.path(synthetic_path, "admission.csv")) %>%
   mutate(
-    firstDate = as.Date(firstDate),
-    lastDate = as.Date(lastDate)
+    firstDate = as_date(firstDate),
+    lastDate = as_date(lastDate)
   )
 
 # Schedule of healthcare workers
-schedule_real = read.csv2(file.path(synthetic_path, "agenda_no_dup.csv")) %>%
+schedule_real = read.csv2(file.path(synthetic_path, "agenda.csv")) %>%
   mutate(
     firstDate = as_datetime(firstDate),
     lastDate = as_datetime(lastDate)
   )
 
 # Real interaction data
-interaction_real = read.csv2(file.path(synthetic_path, "interactions_no_dup.csv")) %>%
-  mutate(date_posix_first = as_datetime(date_posix_first))
+interaction_real = read.csv2(file.path(synthetic_path, "interactions.csv")) %>%
+  mutate(date_posix = as_datetime(date_posix))
 
 # Synthetic data
 interaction_synthetic = data.frame()
-for (f in list.files(file.path(synthetic_path, "full_0-5"), pattern = "matContact", full.names = T)) {
+for (f in list.files(file.path(synthetic_path, "full_0-5agenda"), pattern = "matContact", full.names = T)) {
   interaction_synthetic = bind_rows(
     interaction_synthetic,
     read.csv2(f) %>% 
@@ -58,9 +60,488 @@ for (f in list.files(file.path(synthetic_path, "full_0-5"), pattern = "matContac
 }
 ```
 
+## Compare network characteristics
+
+Analyses are based on Quentin's codes available [here](https://gitlab.pasteur.fr/qleclerc/network_algorithm/-/tree/main/analysis?ref_type=heads).
+
+### Number of unique contacts and contact duration 
+```{r}
+# Prepare observed data 
+data = interaction_real %>%
+  select(from, to, date_posix, length) %>%
+  rename(date_posix = date_posix)
+
+dur_observed = data %>%
+  mutate(date_posix = floor_date(date_posix, "hour")) %>%
+  group_by(from, to, date_posix) %>%
+  summarise(length = sum(length)/60, .groups = "drop") %>% # Convert in minutes
+  select(length) %>%
+  mutate(network = "Observed")
+
+distrib_PAPA = data %>%
+  mutate(type = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))) %>%
+  filter(type == "PA-PA") %>%
+  mutate(date_posix = floor_date(date_posix, "hour")) %>%
+  select(-length) %>%
+  distinct() %>%
+  count(date_posix) %>%
+  mutate(day = wday(date_posix, week_start = 1)) %>%
+  mutate(day = as.character(day)) %>%
+  mutate(day = replace(day, day %in% c("6", "7"), "Weekend")) %>%
+  mutate(day = replace(day, day != "Weekend", "Weekday")) %>%
+  mutate(date_posix = hour(date_posix)) %>%
+  group_by(date_posix, day) %>%
+  summarise(med = median(n),
+            q25 = quantile(n, 0.25),
+            q75 = quantile(n, 0.75), .groups = "drop") %>%
+  mutate(type = "Patient-patient")
+
+distrib_PEPE = data %>%
+  mutate(type = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))) %>%
+  filter(type == "PE-PE") %>%
+  mutate(date_posix = floor_date(date_posix, "hour")) %>%
+  select(-length) %>%
+  distinct() %>%
+  count(date_posix) %>%
+  ungroup() %>%
+  mutate(day = wday(date_posix, week_start = 1)) %>%
+  mutate(day = as.character(day)) %>%
+  mutate(day = replace(day, day %in% c("6", "7"), "Weekend")) %>%
+  mutate(day = replace(day, day != "Weekend", "Weekday")) %>%
+  mutate(date_posix = hour(date_posix)) %>%
+  group_by(date_posix, day) %>%
+  summarise(med = median(n),
+            q25 = quantile(n, 0.25),
+            q75 = quantile(n, 0.75), .groups = "drop") %>%
+  mutate(type = "Staff-staff")
+
+distrib_PAPE = data %>%
+  mutate(type = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))) %>%
+  filter(type == "PA-PE" | type == "PE-PA") %>%
+  mutate(date_posix = floor_date(date_posix, "hour")) %>%
+  select(-length) %>%
+  distinct() %>%
+  count(date_posix) %>%
+  ungroup() %>%
+  mutate(day = wday(date_posix, week_start = 1)) %>%
+  mutate(day = as.character(day)) %>%
+  mutate(day = replace(day, day %in% c("6", "7"), "Weekend")) %>%
+  mutate(day = replace(day, day != "Weekend", "Weekday")) %>%
+  mutate(date_posix = hour(date_posix)) %>%
+  group_by(date_posix, day) %>%
+  summarise(med = median(n),
+            q25 = quantile(n, 0.25),
+            q75 = quantile(n, 0.75), .groups = "drop") %>%
+  mutate(type = "Patient-staff")
+
+distrib_real = rbind(distrib_PAPA, distrib_PEPE, distrib_PAPE) %>%
+  mutate(date_posix = paste0(date_posix, ":00")) %>%
+  mutate(date_posix = factor(date_posix, levels = unique(date_posix))) %>%
+  mutate(network = "Observed")
+
+# Prepare reconstructed data 
+for (prob in c("0-1", "0-5agenda", "0-5", "biased")) {
+  dur_sim = data.frame()
+  distrib_simu = data.frame()
+  
+  to_read = ifelse(prob!="biased", paste0("full_", prob), prob)
+  
+  for (f in list.files(file.path(synthetic_path, to_read), "matContactBuilt", full.names = T)) {
+   data = read.csv2(f)
+  
+    dur_sim = bind_rows(
+      dur_sim, 
+      data %>%
+        mutate(date_posix = floor_date(as_datetime(date_posix), "hour")) %>%
+        group_by(from, to, date_posix) %>%
+        summarise(length = sum(length)/60, .groups = "drop") %>%
+        mutate(network = paste0("Reconstructed-", gsub("^.*Networks|_oneday.csv$", "", f))) %>%
+        select(length, network)
+    )
+    
+    distrib_PAPA = data %>%
+      mutate(type = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))) %>%
+      filter(type == "PA-PA") %>%
+      mutate(date_posix = as_datetime(date_posix)) %>%
+      mutate(date_posix = floor_date(date_posix, "hour")) %>%
+      select(-length) %>%
+      distinct() %>%
+      count(date_posix) %>%
+      ungroup() %>%
+      mutate(day = wday(date_posix, week_start = 1)) %>%
+      mutate(day = as.character(day)) %>%
+      mutate(day = replace(day, day %in% c("6", "7"), "Weekend")) %>%
+      mutate(day = replace(day, day != "Weekend", "Weekday")) %>%
+      mutate(date_posix = hour(date_posix)) %>%
+      group_by(date_posix, day) %>%
+      summarise(med = median(n),
+                q25 = quantile(n, 0.25),
+                q75 = quantile(n, 0.75), .groups = "drop") %>%
+      mutate(type = "Patient-patient")
+    
+    distrib_PEPE = data %>%
+      mutate(type = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))) %>%
+      filter(type == "PE-PE") %>%
+      mutate(date_posix = as_datetime(date_posix)) %>%
+      mutate(date_posix = floor_date(date_posix, "hour")) %>%
+      select(-length) %>%
+      distinct() %>%
+      count(date_posix) %>%
+      ungroup() %>%
+      mutate(day = wday(date_posix, week_start = 1)) %>%
+      mutate(day = as.character(day)) %>%
+      mutate(day = replace(day, day %in% c("6", "7"), "Weekend")) %>%
+      mutate(day = replace(day, day != "Weekend", "Weekday")) %>%
+      mutate(date_posix = hour(date_posix)) %>%
+      group_by(date_posix, day) %>%
+      summarise(med = median(n),
+                q25 = quantile(n, 0.25),
+                q75 = quantile(n, 0.75), .groups = "drop") %>%
+      mutate(type = "Staff-staff")
+    
+    distrib_PAPE = data %>%
+      mutate(type = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))) %>%
+      filter(type == "PA-PE" | type == "PE-PA") %>%
+      mutate(date_posix = as_datetime(date_posix)) %>%
+      mutate(date_posix = floor_date(date_posix, "hour")) %>%
+      select(-length) %>%
+      distinct() %>%
+      count(date_posix) %>%
+      ungroup() %>%
+      mutate(day = wday(date_posix, week_start = 1)) %>%
+      mutate(day = as.character(day)) %>%
+      mutate(day = replace(day, day %in% c("6", "7"), "Weekend")) %>%
+      mutate(day = replace(day, day != "Weekend", "Weekday")) %>%
+      mutate(date_posix = hour(date_posix)) %>%
+      group_by(date_posix, day) %>%
+      summarise(med = median(n),
+                q25 = quantile(n, 0.25),
+                q75 = quantile(n, 0.75), .groups = "drop") %>%
+      mutate(type = "Patient-staff")
+    
+    distrib_simu = bind_rows(
+      distrib_simu,
+      rbind(distrib_PAPA, distrib_PEPE, distrib_PAPE) %>%
+        mutate(date_posix = paste0(date_posix, ":00")) %>%
+        mutate(
+          date_posix = factor(date_posix, levels = unique(date_posix)),
+          network = paste0("Reconstructed-", gsub(".*Networks|_oneday.*$", "", f))
+          ) 
+    )
+  }
+  
+  # Combine datasets 
+  distrib_all = rbind(distrib_real, distrib_simu) %>%
+    mutate(
+      type = factor(type, levels = unique(type)),
+                    date_posix = factor(date_posix, levels = c("0:00","1:00","2:00","3:00","4:00",
+                                                               "5:00","6:00","7:00","8:00","9:00",
+                                                               "10:00","11:00","12:00","13:00","14:00",
+                                                               "15:00","16:00","17:00","18:00","19:00",
+                                                               "20:00","21:00","22:00","23:00"))
+      )
+    
+  # Compare number of unique contacts
+  pa = distrib_all %>%
+    filter(day != "Weekend") %>%
+    ggplot() +
+    geom_ribbon(aes(date_posix, ymin = q25, ymax = q75, fill = network, group = interaction(type, network, day)),
+                alpha = 0.3) +
+    geom_point(aes(date_posix, med, colour = network)) +
+    geom_line(aes(date_posix, med, colour = network, group = interaction(type, network, day))) +
+    scale_colour_discrete(type = c("orange", colorRampPalette(c("dodgerblue4", "lightskyblue"))(10))) +
+    scale_fill_discrete(type = c("orange", colorRampPalette(c("dodgerblue4", "lightskyblue"))(10))) +
+    scale_y_continuous(breaks = seq(0,300,75)) +
+    scale_x_discrete(breaks = c("0:00", "4:00", "8:00", "12:00",
+                                "16:00","20:00")) +
+    facet_grid(cols = vars(type), rows = vars(day)) +
+    theme_bw() +
+    theme(axis.text.x = element_text(size = 12, angle = 45, hjust = 1),
+          legend.text = element_text(size = 14),
+          legend.title = element_text(size = 14),
+          axis.text.y = element_text(size = 14),
+          axis.title = element_text(size = 14),
+          strip.text = element_text(size = 14))  +
+    labs(x = "Hour", y = "Number of unique contacts", colour = "Network:", fill = "Network:")
+  
+  # Compare contact duration 
+  pb = bind_rows(dur_observed, dur_sim) %>%
+    ggplot(aes(y=length, x = network, colour = network)) +
+    geom_boxplot(outlier.shape = NA) +
+     scale_colour_discrete(type = c("orange", colorRampPalette(c("dodgerblue4", "lightskyblue"))(10))) +
+    coord_cartesian(ylim = c(0,35)) +
+    guides(colour="none") +
+    theme_bw() +
+    theme(axis.text.x = element_text(size = 14, angle = 30, hjust = 1),
+          axis.text.y = element_text(size = 14),
+          axis.title = element_text(size = 14)) +
+    labs(y = "Contact duration (minutes)", x = "Network") 
+  
+  # Combine plots
+  p = plot_grid(pa, pb, nrow = 2, labels = c("A", "B"), hjust=0, vjust=c(1,0))
+  ggsave(file.path(fig_path, paste0("unique_contacts_", prob, ".png")), p, height = 8, width = 11)  
+}
+
+```
+
+### Network metrics (degree, global efficiency, transitivity, assortativity, temporal correlation, density)
+```{r compare networks}
+adm_data = admission %>%
+  select(id, cat, ward) %>%
+  distinct()
+
+data = interaction_real %>%
+  select(from, to, date_posix, length) %>%
+  rename(date_posix = date_posix)
+
+graph_data = data %>%
+  mutate(date_posix = floor_date(date_posix, "day")) %>%
+  select(from, to, date_posix) %>%
+  distinct() %>%
+  arrange(date_posix)
+
+for (prob in c("0-1", "0-5agenda", "0-5", "biased")) {
+  
+  to_read = ifelse(prob!="biased", paste0("full_", prob), prob)
+  simu_files = list.files(path = file.path(synthetic_path, to_read), pattern = "matContact.*", full.names = T)
+
+  ## Reconstructed full #####
+  
+  iter=1
+  
+  simu_data = data.frame()
+  
+  for(f in simu_files){
+    
+    data = read.csv2(f)
+    
+    graph_data = data %>%
+      mutate(date_posix = floor_date(as_datetime(date_posix), "day")) %>%
+      # filter(date_posix >= as_date("2020-05-06") & date_posix <= as_date("2020-05-07")) %>%
+      select(from, to, date_posix) %>%
+      distinct %>%
+      arrange(date_posix)
+    
+    simu_data = rbind(simu_data,
+                      get_net_metrics(graph_data, adm_data, iter, "Reconstructed"))
+    
+    iter=iter+1
+  }
+  
+  ## Observed #####
+  graph_data = interaction_real %>%
+    rename(date_posix = date_posix) %>%
+    mutate(date_posix = floor_date(date_posix, "day")) %>%
+    # filter(date_posix >= as_date("2020-05-06") & date_posix <= as_date("2020-05-07")) %>%
+    select(from, to, date_posix) %>%
+    distinct() %>%
+    arrange(date_posix)
+  
+  observed_data = get_net_metrics(graph_data, adm_data, 1, "Observed")
+  
+  # GROUPED #####
+  
+  summary_data = rbind(simu_data, observed_data)
+  # for convenience, save the summary here and read it in later
+  # write.csv(summary_data, here::here("Data", "summary_data.csv"), row.names = F)
+  # summary_data = read.csv(here::here("Data", "summary_data.csv"))
+  
+  summary_data = summary_data %>%
+    mutate(network = factor(network,
+                            levels = c("Observed", "Reconstructed")))
+  
+  summary_data = summary_data %>%
+    group_by(day, network) %>%
+    summarise(across(everything(), median), .groups = "drop") %>%
+    select(-iter)
+  
+  summary_data %>%
+    select(-day) %>%
+    group_by(network) %>%
+    summarise(across(everything(), \(x) quantile(x, probs=0.75))) %>%
+    View
+  
+  pa = ggplot() +
+    geom_boxplot(data=summary_data,
+                 aes(x = network, y = degrees, colour = network), linewidth = 0.8) +
+    scale_colour_discrete(type = algo_syn_pal) +
+    theme_bw() +
+    guides(colour = "none") +
+    labs(x = "Network", y = "Degree (daily)") +
+    theme(axis.title.x = element_blank(),
+          axis.text.x = element_blank(),
+          axis.text.y = element_text(size = 12),
+          axis.title.y = element_text(size = 12))
+  
+  pb = ggplot() +
+    geom_boxplot(data=summary_data,
+                 aes(x = network, y = efficiencies, colour = network), linewidth = 0.8) +
+    scale_colour_discrete(type = algo_syn_pal) +
+    theme_bw() +
+    guides(colour = "none") +
+    labs(x = "Network", y = "Global efficiency") +
+    theme(axis.title.x = element_blank(),
+          axis.text.x = element_blank(),
+          axis.text.y = element_text(size = 12),
+          axis.title.y = element_text(size = 12))
+  
+  pc = ggplot() +
+    geom_boxplot(data=summary_data,
+                 aes(x = network, y = transitivities, colour = network), linewidth = 0.8) +
+    scale_colour_discrete(type = algo_syn_pal) +
+    theme_bw() +
+    guides(colour = "none") +
+    labs(x = "Network", y = "Transitivity") +
+    theme(axis.title.x = element_blank(),
+          axis.text.x = element_blank(),
+          axis.text.y = element_text(size = 12),
+          axis.title.y = element_text(size = 12))
+  
+  pd = ggplot() +
+    geom_boxplot(data=summary_data,
+                 aes(x = network, y = assortativities, colour = network), linewidth = 0.8) +
+    scale_colour_discrete(type = algo_syn_pal) +
+    theme_bw() +
+    guides(colour = "none") +
+    labs(x = "Network", y = "Assortativity (degree)") +
+    theme(axis.text.x = element_text(size = 12, angle = 30, hjust = 1),
+          axis.title = element_text(size = 12),
+          axis.text.y = element_text(size = 12))
+  
+  pe = ggplot() +
+  geom_boxplot(data=summary_data%>%filter(temp_corr>0),
+               aes(x = network, y = temp_corr, colour = network), linewidth = 0.8) +
+  scale_colour_discrete(type = algo_syn_pal) +
+  theme_bw() +
+  guides(colour = "none") +
+  labs(x = "Network", y = "Temporal correlation") +
+  theme(axis.text.x = element_text(size = 12, angle = 30, hjust = 1),
+        axis.title = element_text(size = 12),
+        axis.text.y = element_text(size = 12))
+  
+  pf = ggplot() +
+    geom_boxplot(data=summary_data,
+                 aes(x = network, y = densities, colour = network), linewidth = 0.8) +
+    scale_colour_discrete(type = algo_syn_pal) +
+    theme_bw() +
+    guides(colour = "none") +
+    labs(x = "Network", y = "Density") +
+    theme(axis.text.x = element_text(size = 12, angle = 30, hjust = 1),
+          axis.title = element_text(size = 12),
+          axis.text.y = element_text(size = 12))
+
+  p = plot_grid(pa,pb,pc,pd, pe, pf, nrow=2, ncol = 3,
+                      labels = c("A", "B", "C", "D", "E", "F"),
+            hjust = 0, vjust=1, align = "v", rel_heights = c(0.77, 1))
+  ggsave(file.path(fig_path, paste0("metrics_", prob, ".png")), p, height = 7, width = 10)
+}
+```
+
+### Troubleshooting assortativity by degree
+```{r compare networks}
+adm_data = admission %>%
+  select(id, cat, ward) %>%
+  distinct()
+
+## Reconstructed full #####
+
+simu_files = list.files(path = file.path(synthetic_path, "full_0-5agenda"), pattern = "matContact.*", full.names = T)
+simu_data = data.frame()
+iter=1
+
+for(f in simu_files){
+  data = read.csv2(f)
+  
+  graph_data = data %>%
+    mutate(date_posix = floor_date(as_datetime(date_posix), "day")) %>%
+    select(from, to, date_posix) %>%
+    distinct %>%
+    arrange(date_posix)
+    
+  simu_data = rbind(simu_data,
+                    get_assortativity_degree(graph_data, adm_data, iter, "Reconstructed"))
+  
+  iter=iter+1
+} 
+
+## Observed #####
+graph_data = interaction_real %>%
+  rename(date_posix = date_posix) %>%
+  mutate(date_posix = floor_date(date_posix, "day")) %>%
+  select(from, to, date_posix) %>%
+  distinct() %>%
+  arrange(date_posix) 
+
+observed_data = get_assortativity_degree(graph_data, adm_data, 1, "Observed")
+
+## Plot simulated assortativity
+ggplot(simu_data, aes(x = day, y = assortativities, col = as.factor(iter), group = as.factor(iter))) +
+  geom_line() +
+  geom_point(x = observed_data$day[1], y = observed_data$assortativities[1], col = "red") +
+  geom_point(x = observed_data$day[2], y = observed_data$assortativities[2], col = "red") +
+  scale_color_manual(values = colorRampPalette(c("darkblue", "lightblue"))(10)) +
+  theme_bw() +
+  expand_limits(y=c(min(simu_data$assortativities), max(observed_data$assortativities))) +
+  labs(col = "Simulation", y = "Assortativity degree (by degree)", x = "")
+```
+
+```{r compare networks}
+adm_data = admission %>%
+  select(id, cat, ward) %>%
+  distinct() %>%
+  mutate(
+    staff = grepl("PE-", id),
+    cat_ag = cat
+    )
+
+## Reconstructed full #####
+
+simu_files = list.files(path = file.path(synthetic_path, "full_0-5agenda"), pattern = "matContact.*", full.names = T)
+simu_data = data.frame()
+
+iter=1
+for(f in simu_files){
+  data = read.csv2(f)
+  
+  graph_data = data %>%
+    mutate(date_posix = floor_date(as_datetime(date_posix), "day")) %>%
+    select(from, to, date_posix) %>%
+    distinct %>%
+    arrange(date_posix)
+    
+  print(nrow(graph_data))
+  simu_data = rbind(simu_data,
+                    get_assortativity_degree(graph_data, adm_data, iter, "Reconstructed", NA))
+  
+  iter=iter+1
+}
+
+## Observed #####
+graph_data = interaction_real %>%
+  rename(date_posix = date_posix) %>%
+  mutate(date_posix = floor_date(date_posix, "day")) %>%
+  filter(date_posix >= as_date("2020-05-06") & date_posix <= as_date("2020-05-07")) %>%
+  select(from, to, date_posix) %>%
+  distinct() %>%
+  arrange(date_posix) %>%
+  mutate(date_posix = as.Date("2020-05-06"))
+
+observed_data = get_assortativity_degree(graph_data, adm_data, 1, "Observed", "day")
+
+## Plot simulated assortativity
+simu_data %>% 
+  ggplot(., aes(x = day, y =assortativities, group = as.factor(iter), col = as.factor(iter))) + 
+  geom_hline(yintercept = observed_data$assortativities) + 
+  geom_line() + 
+  theme_bw() +
+  labs(x = "Simulated days", y = "Assortativity degree", col = "Simulation")
+```
+
+## Verifications on the synthetic networks
+### Verify that all individuals in the admission file have at least one interaction
 ```{r}
 data_real = interaction_real %>%
-  rename(date_posix = date_posix_first)
+  rename(date_posix = date_posix)
 ids_real = sort(unique(c(data_real$from, data_real$to)))
 
 data_syn = read.csv2(file.path(synthetic_path, "matContactBuiltSimulatedCtcNetworks1_oneday.csv")) %>%
@@ -72,7 +553,7 @@ sort(ids_syn[!ids_syn %in% ids_real & !grepl("-[0-9]$", ids_syn)])
 sort(admission$id[!admission$id %in% ids_real & !grepl("-[0-9]+$", admission$id)])
 ```
 
-## Verify whether individuals in the synthetic network have at least one interaction per hour 
+### Verify whether individuals in the synthetic network have at least one interaction per hour 
 ```{r at least one interaction per hour}
 # Do all individuals have at least one contact per hour in the synthetic data?
 at_least_one_contact = data.frame()
@@ -169,8 +650,8 @@ ids = at_least_one_contact %>%
   pull(id)
 admission %>% filter(id %in% ids)
 schedule_real %>% filter(id %in% ids) %>% filter(lastDate <= "2020-05-09 00:00:00") %>% arrange(id, firstDate)
-interaction_real %>% filter(from %in% ids | to %in% ids, date_posix_first <= as_datetime("2020-05-07 12:00:00")) %>%  
-  mutate(lastDate = date_posix_first + length) 
+interaction_real %>% filter(from %in% ids | to %in% ids, date_posix <= as_datetime("2020-05-07 12:00:00")) %>%  
+  mutate(lastDate = date_posix + length) 
 
 # Individuals that are present only during the first afternoon 
 testFun = function(df) {
@@ -199,7 +680,7 @@ all_contacts %>%
 
 ```
 
-## Verification of the coherence between schedule and admission databases for healthcare workers
+### Verification of the coherence between schedule and admission databases for healthcare workers
 ```{r}
 # Schedule of healthcare workers 
 ids_pe = admission$id[admission$status == "PE"]
@@ -215,7 +696,7 @@ for (i in ids_pe) {
   if (sum(interaction_real$to == i | interaction_real$from == i) > 0) {
     interactions_id = interaction_real %>%
       filter(from == i| to == i) %>%
-      select(date_posix_first, length) %>%
+      select(date_posix, length) %>%
       mutate(n = 1:n())
   
     # Are all interactions within the schedule ?
@@ -224,7 +705,7 @@ for (i in ids_pe) {
       interactions_id
     ) %>%
       group_by(n) %>%
-      summarise(out = any(date_posix_first >= firstDate & date_posix_first+length <= lastDate), .groups = "drop") %>%
+      summarise(out = any(date_posix >= firstDate & date_posix+length <= lastDate), .groups = "drop") %>%
       pull(out)
     
     interactions_in_schedule = bind_rows(
@@ -247,700 +728,6 @@ for (i in ids_pe) {
 }
 
 summary(interactions_in_schedule)
-```
-
-
-## Compare network characteristics
-
-Analyses are based on Quentin's codes available [here](https://gitlab.pasteur.fr/qleclerc/network_algorithm/-/tree/main/analysis?ref_type=heads).
-
-### Number of unique contacts and contact duration 
-```{r}
-# Prepare observed data 
-data = interaction_real %>%
-  select(from, to, date_posix_first, length) %>%
-  rename(date_posix = date_posix_first)
-
-dur_observed = data %>%
-  mutate(date_posix = floor_date(date_posix, "hour")) %>%
-  group_by(from, to, date_posix) %>%
-  summarise(length = sum(length)/60, .groups = "drop") %>% # Convert in minutes
-  pull(length)
-
-distrib_PAPA = data %>%
-  mutate(type = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))) %>%
-  filter(type == "PA-PA") %>%
-  mutate(date_posix = floor_date(date_posix, "hour")) %>%
-  select(-length) %>%
-  distinct() %>%
-  count(date_posix) %>%
-  mutate(day = wday(date_posix, week_start = 1)) %>%
-  mutate(day = as.character(day)) %>%
-  mutate(day = replace(day, day %in% c("6", "7"), "Weekend")) %>%
-  mutate(day = replace(day, day != "Weekend", "Weekday")) %>%
-  mutate(date_posix = hour(date_posix)) %>%
-  group_by(date_posix, day) %>%
-  summarise(med = median(n),
-            q25 = quantile(n, 0.25),
-            q75 = quantile(n, 0.75), .groups = "drop") %>%
-  mutate(type = "Patient-patient")
-
-distrib_PEPE = data %>%
-  mutate(type = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))) %>%
-  filter(type == "PE-PE") %>%
-  mutate(date_posix = floor_date(date_posix, "hour")) %>%
-  select(-length) %>%
-  distinct() %>%
-  count(date_posix) %>%
-  ungroup() %>%
-  mutate(day = wday(date_posix, week_start = 1)) %>%
-  mutate(day = as.character(day)) %>%
-  mutate(day = replace(day, day %in% c("6", "7"), "Weekend")) %>%
-  mutate(day = replace(day, day != "Weekend", "Weekday")) %>%
-  mutate(date_posix = hour(date_posix)) %>%
-  group_by(date_posix, day) %>%
-  summarise(med = median(n),
-            q25 = quantile(n, 0.25),
-            q75 = quantile(n, 0.75), .groups = "drop") %>%
-  mutate(type = "Staff-staff")
-
-distrib_PAPE = data %>%
-  mutate(type = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))) %>%
-  filter(type == "PA-PE" | type == "PE-PA") %>%
-  mutate(date_posix = floor_date(date_posix, "hour")) %>%
-  select(-length) %>%
-  distinct() %>%
-  count(date_posix) %>%
-  ungroup() %>%
-  mutate(day = wday(date_posix, week_start = 1)) %>%
-  mutate(day = as.character(day)) %>%
-  mutate(day = replace(day, day %in% c("6", "7"), "Weekend")) %>%
-  mutate(day = replace(day, day != "Weekend", "Weekday")) %>%
-  mutate(date_posix = hour(date_posix)) %>%
-  group_by(date_posix, day) %>%
-  summarise(med = median(n),
-            q25 = quantile(n, 0.25),
-            q75 = quantile(n, 0.75), .groups = "drop") %>%
-  mutate(type = "Patient-staff")
-
-distrib_real = rbind(distrib_PAPA, distrib_PEPE, distrib_PAPE) %>%
-  mutate(date_posix = paste0(date_posix, ":00")) %>%
-  mutate(date_posix = factor(date_posix, levels = unique(date_posix))) %>%
-  mutate(network = "Observed")
-
-# Prepare reconstructed data 
-data = read.csv2(file.path(synthetic_path, "matContactBuiltSimulatedCtcNetworks2_oneday.csv"))
-
-dur_simu = data %>%
-  mutate(date_posix = as_datetime(date_posix)) %>%
-  mutate(date_posix = floor_date(date_posix, "hour")) %>%
-  group_by(from, to, date_posix) %>%
-  summarise(length = sum(length)/60, .groups = "drop") %>%
-  pull(length)
-
-distrib_PAPA = data %>%
-  mutate(type = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))) %>%
-  filter(type == "PA-PA") %>%
-  mutate(date_posix = as_datetime(date_posix)) %>%
-  mutate(date_posix = floor_date(date_posix, "hour")) %>%
-  select(-length) %>%
-  distinct() %>%
-  count(date_posix) %>%
-  ungroup() %>%
-  mutate(day = wday(date_posix, week_start = 1)) %>%
-  mutate(day = as.character(day)) %>%
-  mutate(day = replace(day, day %in% c("6", "7"), "Weekend")) %>%
-  mutate(day = replace(day, day != "Weekend", "Weekday")) %>%
-  mutate(date_posix = hour(date_posix)) %>%
-  group_by(date_posix, day) %>%
-  summarise(med = median(n),
-            q25 = quantile(n, 0.25),
-            q75 = quantile(n, 0.75), .groups = "drop") %>%
-  mutate(type = "Patient-patient")
-
-distrib_PEPE = data %>%
-  mutate(type = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))) %>%
-  filter(type == "PE-PE") %>%
-  mutate(date_posix = as_datetime(date_posix)) %>%
-  mutate(date_posix = floor_date(date_posix, "hour")) %>%
-  select(-length) %>%
-  distinct() %>%
-  count(date_posix) %>%
-  ungroup() %>%
-  mutate(day = wday(date_posix, week_start = 1)) %>%
-  mutate(day = as.character(day)) %>%
-  mutate(day = replace(day, day %in% c("6", "7"), "Weekend")) %>%
-  mutate(day = replace(day, day != "Weekend", "Weekday")) %>%
-  mutate(date_posix = hour(date_posix)) %>%
-  group_by(date_posix, day) %>%
-  summarise(med = median(n),
-            q25 = quantile(n, 0.25),
-            q75 = quantile(n, 0.75), .groups = "drop") %>%
-  mutate(type = "Staff-staff")
-
-distrib_PAPE = data %>%
-  mutate(type = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))) %>%
-  filter(type == "PA-PE" | type == "PE-PA") %>%
-  mutate(date_posix = as_datetime(date_posix)) %>%
-  mutate(date_posix = floor_date(date_posix, "hour")) %>%
-  select(-length) %>%
-  distinct() %>%
-  count(date_posix) %>%
-  ungroup() %>%
-  mutate(day = wday(date_posix, week_start = 1)) %>%
-  mutate(day = as.character(day)) %>%
-  mutate(day = replace(day, day %in% c("6", "7"), "Weekend")) %>%
-  mutate(day = replace(day, day != "Weekend", "Weekday")) %>%
-  mutate(date_posix = hour(date_posix)) %>%
-  group_by(date_posix, day) %>%
-  summarise(med = median(n),
-            q25 = quantile(n, 0.25),
-            q75 = quantile(n, 0.75), .groups = "drop") %>%
-  mutate(type = "Patient-staff")
-
-distrib_simu = rbind(distrib_PAPA, distrib_PEPE, distrib_PAPE) %>%
-  mutate(date_posix = paste0(date_posix, ":00")) %>%
-  mutate(date_posix = factor(date_posix, levels = unique(date_posix))) %>%
-  mutate(network = "Reconstructed")
-
-
-# Combine datasets 
-distrib_all = rbind(distrib_real, distrib_simu) %>%
-  mutate(network = factor(network, levels = unique(network))) %>%
-  mutate(type = factor(type, levels = unique(type))) %>%
-  mutate(date_posix = factor(date_posix, levels = c("0:00","1:00","2:00","3:00","4:00",
-                                                    "5:00","6:00","7:00","8:00","9:00",
-                                                    "10:00","11:00","12:00","13:00","14:00",
-                                                    "15:00","16:00","17:00","18:00","19:00",
-                                                    "20:00","21:00","22:00","23:00")))
-  
-# Compare number of unique contacts
-pa = ggplot(distrib_all) +
-  geom_ribbon(aes(date_posix, ymin = q25, ymax = q75, fill = network, group = interaction(type, network, day)),
-              alpha = 0.3) +
-  geom_point(aes(date_posix, med, colour = network)) +
-  geom_line(aes(date_posix, med, colour = network, group = interaction(type, network, day))) +
-  scale_colour_discrete(type = pal) +
-  scale_fill_discrete(type = pal) +
-  scale_y_continuous(breaks = seq(0,300,75)) +
-  scale_x_discrete(breaks = c("0:00", "4:00", "8:00", "12:00",
-                              "16:00","20:00")) +
-  facet_grid(cols = vars(type), rows = vars(day)) +
-  theme_bw() +
-  theme(axis.text.x = element_text(size = 12, angle = 45, hjust = 1),
-        legend.text = element_text(size = 14),
-        legend.title = element_text(size = 14),
-        axis.text.y = element_text(size = 14),
-        axis.title = element_text(size = 14),
-        strip.text = element_text(size = 14))  +
-  labs(x = "Hour", y = "Number of unique contacts", colour = "Network:", fill = "Network:")
-
-# Compare contact duration 
-pb = ggplot() +
-  geom_boxplot(aes(y=dur_observed, x = "1", colour = "Observed"), outlier.shape = NA) +
-  geom_boxplot(aes(y=dur_simu, x = "3", colour = "Reconstructed"), outlier.shape = NA) +
-  scale_color_manual(values = pal) +
-  scale_x_discrete(labels = c("Observed", "Reconstructed")) +
-  coord_cartesian(ylim = c(0,35)) +
-  guides(colour="none") +
-  theme_bw() +
-  theme(axis.text.x = element_text(size = 14),
-        axis.text.y = element_text(size = 14),
-        axis.title = element_text(size = 14)) +
-  labs(y = "Contact duration (minutes)", x = "Network")
-
-# Combine plots
-plot_grid(pa, pb, nrow = 2, labels = c("a)", "b)"), rel_heights = c(1,0.8), hjust=0, vjust=c(1,0))
-```
-
-
-```{r}
-# Prepare observed data 
-data = interaction_real %>%
-  select(from, to, date_posix_first, length) %>%
-  rename(date_posix = date_posix_first)
-
-dur_observed = data %>%
-  mutate(date_posix = floor_date(date_posix, "hour")) %>%
-  group_by(from, to, date_posix) %>%
-  summarise(length = sum(length)/60, .groups = "drop") %>% # Convert in minutes
-  select(length) %>%
-  mutate(network = "Observed")
-
-distrib_PAPA = data %>%
-  mutate(type = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))) %>%
-  filter(type == "PA-PA") %>%
-  mutate(date_posix = floor_date(date_posix, "hour")) %>%
-  select(-length) %>%
-  distinct() %>%
-  count(date_posix) %>%
-  mutate(day = wday(date_posix, week_start = 1)) %>%
-  mutate(day = as.character(day)) %>%
-  mutate(day = replace(day, day %in% c("6", "7"), "Weekend")) %>%
-  mutate(day = replace(day, day != "Weekend", "Weekday")) %>%
-  mutate(date_posix = hour(date_posix)) %>%
-  group_by(date_posix, day) %>%
-  summarise(med = median(n),
-            q25 = quantile(n, 0.25),
-            q75 = quantile(n, 0.75), .groups = "drop") %>%
-  mutate(type = "Patient-patient")
-
-distrib_PEPE = data %>%
-  mutate(type = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))) %>%
-  filter(type == "PE-PE") %>%
-  mutate(date_posix = floor_date(date_posix, "hour")) %>%
-  select(-length) %>%
-  distinct() %>%
-  count(date_posix) %>%
-  ungroup() %>%
-  mutate(day = wday(date_posix, week_start = 1)) %>%
-  mutate(day = as.character(day)) %>%
-  mutate(day = replace(day, day %in% c("6", "7"), "Weekend")) %>%
-  mutate(day = replace(day, day != "Weekend", "Weekday")) %>%
-  mutate(date_posix = hour(date_posix)) %>%
-  group_by(date_posix, day) %>%
-  summarise(med = median(n),
-            q25 = quantile(n, 0.25),
-            q75 = quantile(n, 0.75), .groups = "drop") %>%
-  mutate(type = "Staff-staff")
-
-distrib_PAPE = data %>%
-  mutate(type = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))) %>%
-  filter(type == "PA-PE" | type == "PE-PA") %>%
-  mutate(date_posix = floor_date(date_posix, "hour")) %>%
-  select(-length) %>%
-  distinct() %>%
-  count(date_posix) %>%
-  ungroup() %>%
-  mutate(day = wday(date_posix, week_start = 1)) %>%
-  mutate(day = as.character(day)) %>%
-  mutate(day = replace(day, day %in% c("6", "7"), "Weekend")) %>%
-  mutate(day = replace(day, day != "Weekend", "Weekday")) %>%
-  mutate(date_posix = hour(date_posix)) %>%
-  group_by(date_posix, day) %>%
-  summarise(med = median(n),
-            q25 = quantile(n, 0.25),
-            q75 = quantile(n, 0.75), .groups = "drop") %>%
-  mutate(type = "Patient-staff")
-
-distrib_real = rbind(distrib_PAPA, distrib_PEPE, distrib_PAPE) %>%
-  mutate(date_posix = paste0(date_posix, ":00")) %>%
-  mutate(date_posix = factor(date_posix, levels = unique(date_posix))) %>%
-  mutate(network = "Observed")
-
-# Prepare reconstructed data 
-for (prob in c("0-1", "0-5agenda", "0-5", "biased")) {
-  dur_sim = data.frame()
-  distrib_simu = data.frame()
-  
-  to_read = ifelse(prob!="biased", paste0("full_", prob), prob)
-  
-  for (f in list.files(file.path(synthetic_path, to_read), "matContactBuilt", full.names = T)) {
-   data = read.csv2(f)
-  
-    dur_sim = bind_rows(
-      dur_sim, 
-      data %>%
-        mutate(date_posix = floor_date(as_datetime(date_posix), "hour")) %>%
-        # filter(date_posix >= as_datetime("2020-05-06"), date_posix <= as_datetime("2020-05-07")) %>%
-        group_by(from, to, date_posix) %>%
-        summarise(length = sum(length)/60, .groups = "drop") %>%
-        mutate(network = paste0("Reconstructed-", gsub("^.*Networks|_oneday.csv$", "", f))) %>%
-        select(length, network)
-    )
-    
-    distrib_PAPA = data %>%
-      mutate(type = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))) %>%
-      filter(type == "PA-PA") %>%
-      mutate(date_posix = as_datetime(date_posix)) %>%
-      # filter(floor_date(date_posix, "day") >= as_datetime("2020-05-06"), floor_date(date_posix, "day") <= as_datetime("2020-05-07")) %>%
-      mutate(date_posix = floor_date(date_posix, "hour")) %>%
-      select(-length) %>%
-      distinct() %>%
-      count(date_posix) %>%
-      ungroup() %>%
-      mutate(day = wday(date_posix, week_start = 1)) %>%
-      mutate(day = as.character(day)) %>%
-      mutate(day = replace(day, day %in% c("6", "7"), "Weekend")) %>%
-      mutate(day = replace(day, day != "Weekend", "Weekday")) %>%
-      mutate(date_posix = hour(date_posix)) %>%
-      group_by(date_posix, day) %>%
-      summarise(med = median(n),
-                q25 = quantile(n, 0.25),
-                q75 = quantile(n, 0.75), .groups = "drop") %>%
-      mutate(type = "Patient-patient")
-    
-    distrib_PEPE = data %>%
-      mutate(type = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))) %>%
-      filter(type == "PE-PE") %>%
-      mutate(date_posix = as_datetime(date_posix)) %>%
-      # filter(floor_date(date_posix, "day") >= as_datetime("2020-05-06"), floor_date(date_posix, "day") <= as_datetime("2020-05-07")) %>%
-      mutate(date_posix = floor_date(date_posix, "hour")) %>%
-      select(-length) %>%
-      distinct() %>%
-      count(date_posix) %>%
-      ungroup() %>%
-      mutate(day = wday(date_posix, week_start = 1)) %>%
-      mutate(day = as.character(day)) %>%
-      mutate(day = replace(day, day %in% c("6", "7"), "Weekend")) %>%
-      mutate(day = replace(day, day != "Weekend", "Weekday")) %>%
-      mutate(date_posix = hour(date_posix)) %>%
-      group_by(date_posix, day) %>%
-      summarise(med = median(n),
-                q25 = quantile(n, 0.25),
-                q75 = quantile(n, 0.75), .groups = "drop") %>%
-      mutate(type = "Staff-staff")
-    
-    distrib_PAPE = data %>%
-      mutate(type = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))) %>%
-      filter(type == "PA-PE" | type == "PE-PA") %>%
-      mutate(date_posix = as_datetime(date_posix)) %>%
-      # filter(floor_date(date_posix, "day") >= as_datetime("2020-05-06"), floor_date(date_posix, "day") <= as_datetime("2020-05-07")) %>%
-      mutate(date_posix = floor_date(date_posix, "hour")) %>%
-      select(-length) %>%
-      distinct() %>%
-      count(date_posix) %>%
-      ungroup() %>%
-      mutate(day = wday(date_posix, week_start = 1)) %>%
-      mutate(day = as.character(day)) %>%
-      mutate(day = replace(day, day %in% c("6", "7"), "Weekend")) %>%
-      mutate(day = replace(day, day != "Weekend", "Weekday")) %>%
-      mutate(date_posix = hour(date_posix)) %>%
-      group_by(date_posix, day) %>%
-      summarise(med = median(n),
-                q25 = quantile(n, 0.25),
-                q75 = quantile(n, 0.75), .groups = "drop") %>%
-      mutate(type = "Patient-staff")
-    
-    distrib_simu = bind_rows(
-      distrib_simu,
-      rbind(distrib_PAPA, distrib_PEPE, distrib_PAPE) %>%
-        mutate(date_posix = paste0(date_posix, ":00")) %>%
-        mutate(
-          date_posix = factor(date_posix, levels = unique(date_posix)),
-          network = paste0("Reconstructed-", gsub(".*Networks|_oneday.*$", "", f))
-          ) 
-    )
-  }
-  
-  # Combine datasets 
-  distrib_all = rbind(distrib_real, distrib_simu) %>%
-    mutate(
-      type = factor(type, levels = unique(type)),
-                    date_posix = factor(date_posix, levels = c("0:00","1:00","2:00","3:00","4:00",
-                                                               "5:00","6:00","7:00","8:00","9:00",
-                                                               "10:00","11:00","12:00","13:00","14:00",
-                                                               "15:00","16:00","17:00","18:00","19:00",
-                                                               "20:00","21:00","22:00","23:00"))
-      )
-    
-  # Compare number of unique contacts
-  pa = distrib_all %>%
-    filter(day != "Weekend") %>%
-    ggplot() +
-    geom_ribbon(aes(date_posix, ymin = q25, ymax = q75, fill = network, group = interaction(type, network, day)),
-                alpha = 0.3) +
-    geom_point(aes(date_posix, med, colour = network)) +
-    geom_line(aes(date_posix, med, colour = network, group = interaction(type, network, day))) +
-    scale_colour_discrete(type = c("orange", colorRampPalette(c("dodgerblue4", "lightskyblue"))(10))) +
-    scale_fill_discrete(type = c("orange", colorRampPalette(c("dodgerblue4", "lightskyblue"))(10))) +
-    scale_y_continuous(breaks = seq(0,300,75)) +
-    scale_x_discrete(breaks = c("0:00", "4:00", "8:00", "12:00",
-                                "16:00","20:00")) +
-    facet_grid(cols = vars(type), rows = vars(day)) +
-    theme_bw() +
-    theme(axis.text.x = element_text(size = 12, angle = 45, hjust = 1),
-          legend.text = element_text(size = 14),
-          legend.title = element_text(size = 14),
-          axis.text.y = element_text(size = 14),
-          axis.title = element_text(size = 14),
-          strip.text = element_text(size = 14))  +
-    labs(x = "Hour", y = "Number of unique contacts", colour = "Network:", fill = "Network:")
-  
-  # Compare contact duration 
-  pb = bind_rows(dur_observed, dur_sim) %>%
-    ggplot(aes(y=length, x = network, colour = network)) +
-    geom_boxplot(outlier.shape = NA) +
-    scale_color_manual(values = pal) +
-    coord_cartesian(ylim = c(0,35)) +
-    guides(colour="none") +
-    theme_bw() +
-    theme(axis.text.x = element_text(size = 14, angle = 30, hjust = 1),
-          axis.text.y = element_text(size = 14),
-          axis.title = element_text(size = 14)) +
-    labs(y = "Contact duration (minutes)", x = "Network") 
-  
-  # Combine plots
-  p = plot_grid(pa, pb, nrow = 2, labels = c("a)", "b)"), rel_heights = c(1,0.8), hjust=0, vjust=c(1,0))
-  ggsave(paste0("../../out/fig/unique_contacts_", prob, ".png"), p, height = 8, width = 10)  
-}
-
-```
-
-### Network metrics (degree, global efficiency, transitivity, assortativity, temporal correlation, density)
-```{r compare networks}
-adm_data = admission %>%
-  select(id, cat, ward) %>%
-  distinct() %>%
-  mutate(
-    staff = grepl("PE-", id),
-    cat_ag = cat
-    )
-
-data = interaction_real %>%
-  select(from, to, date_posix_first, length) %>%
-  rename(date_posix = date_posix_first)
-
-graph_data = data %>%
-  mutate(date_posix = floor_date(date_posix, "day")) %>%
-  filter(date_posix >= as_date("2020-05-06") & date_posix <= as_date("2020-05-07")) %>%
-  select(from, to, date_posix) %>%
-  distinct() %>%
-  arrange(date_posix)
-
-for (prob in c("0-1", "0-5agenda", "0-5", "biased")) {
-  
-  to_read = ifelse(prob!="biased", paste0("full_", prob), prob)
-  simu_files = list.files(path = file.path(synthetic_path, to_read), pattern = "matContact.*", full.names = T)
-
-  ## Reconstructed full #####
-  
-  iter=1
-  
-  simu_data = data.frame()
-  
-  for(f in simu_files){
-    
-    data = read.csv2(f)
-    
-    graph_data = data %>%
-      mutate(date_posix = floor_date(as_datetime(date_posix), "day")) %>%
-      # filter(date_posix >= as_date("2020-05-06") & date_posix <= as_date("2020-05-07")) %>%
-      select(from, to, date_posix) %>%
-      distinct %>%
-      arrange(date_posix)
-    
-    simu_data = rbind(simu_data,
-                      get_net_metrics(graph_data, adm_data, iter, "Reconstructed"))
-    
-    iter=iter+1
-  }
-  
-  ## Observed #####
-  graph_data = interaction_real %>%
-    rename(date_posix = date_posix_first) %>%
-    mutate(date_posix = floor_date(date_posix, "day")) %>%
-    filter(date_posix >= as_date("2020-05-06") & date_posix <= as_date("2020-05-07")) %>%
-    select(from, to, date_posix) %>%
-    distinct() %>%
-    arrange(date_posix) %>%
-    mutate(date_posix = as.Date("2020-05-06"))
-  
-  observed_data = get_net_metrics(graph_data, adm_data, 1, "Observed")
-  
-  # GROUPED #####
-  
-  summary_data = rbind(simu_data, observed_data)
-  # for convenience, save the summary here and read it in later
-  # write.csv(summary_data, here::here("Data", "summary_data.csv"), row.names = F)
-  # summary_data = read.csv(here::here("Data", "summary_data.csv"))
-  
-  summary_data = summary_data %>%
-    mutate(network = factor(network,
-                            levels = c("Observed", "Reconstructed")))
-  
-  summary_data = summary_data %>%
-    group_by(day, network) %>%
-    summarise(across(everything(), median), .groups = "drop") %>%
-    select(-iter)
-  
-  summary_data %>%
-    select(-day) %>%
-    group_by(network) %>%
-    summarise(across(everything(), \(x) quantile(x, probs=0.75))) %>%
-    View
-  
-  pa = ggplot() +
-    geom_boxplot(data=summary_data,
-                 aes(x = network, y = degrees, colour = network), linewidth = 0.8) +
-    scale_colour_discrete(type = pal) +
-    theme_bw() +
-    guides(colour = "none") +
-    labs(x = "Network", y = "Degree (daily)") +
-    theme(axis.title.x = element_blank(),
-          axis.text.x = element_blank(),
-          axis.text.y = element_text(size = 12),
-          axis.title.y = element_text(size = 12))
-  
-  pb = ggplot() +
-    geom_boxplot(data=summary_data,
-                 aes(x = network, y = efficiencies, colour = network), linewidth = 0.8) +
-    scale_colour_discrete(type = pal) +
-    theme_bw() +
-    guides(colour = "none") +
-    labs(x = "Network", y = "Global efficiency") +
-    scale_y_continuous(breaks = seq(0,0.8,0.1)) +
-    theme(axis.title.x = element_blank(),
-          axis.text.x = element_blank(),
-          axis.text.y = element_text(size = 12),
-          axis.title.y = element_text(size = 12))
-  
-  pc = ggplot() +
-    geom_boxplot(data=summary_data,
-                 aes(x = network, y = transitivities, colour = network), linewidth = 0.8) +
-    scale_colour_discrete(type = pal) +
-    theme_bw() +
-    guides(colour = "none") +
-    labs(x = "Network", y = "Transitivity") +
-    theme(axis.title.x = element_blank(),
-          axis.text.x = element_blank(),
-          axis.text.y = element_text(size = 12),
-          axis.title.y = element_text(size = 12))
-  
-  pd = ggplot() +
-    geom_boxplot(data=summary_data,
-                 aes(x = network, y = assortativities, colour = network), linewidth = 0.8) +
-    scale_colour_discrete(type = pal) +
-    theme_bw() +
-    guides(colour = "none") +
-    labs(x = "Network", y = "Assortativity (degree)") +
-    theme(axis.text.x = element_text(size = 12, angle = 30, hjust = 1),
-          axis.title = element_text(size = 12),
-          axis.text.y = element_text(size = 12))
-  
-  p = plot_grid(pa,pb,pc,pd, nrow=2,
-                      labels = c("a)", "b)", "c)", "d)"),
-            hjust = 0, vjust=1, align = "v", rel_heights = c(0.77, 1))
-  ggsave(paste0("../../out/fig/metrics_", prob, ".png"), p, height = 8, width = 8)
-  # ggplot() +
-  #   geom_boxplot(data=summary_data,
-  #                aes(x = network, y = densities, colour = network), linewidth = 0.8) +
-  #   scale_colour_discrete(type = pal) +
-  #   scale_y_continuous(breaks = seq(0,0.3,0.05)) +
-  #   theme_bw() +
-  #   guides(colour = "none") +
-  #   labs(x = "Network", y = "Density") +
-  #   theme(axis.text.x = element_text(size = 12),
-  #         axis.title = element_text(size = 12),
-  #         axis.text.y = element_text(size = 12)) 
-}
-```
-
-
-### Troubleshooting assortativity by degree
-```{r compare networks}
-adm_data = admission %>%
-  select(id, cat, ward) %>%
-  distinct() %>%
-  mutate(
-    staff = grepl("PE-", id),
-    cat_ag = cat
-    )
-
-## Reconstructed full #####
-
-simu_files = list.files(path = file.path(synthetic_path, "full_0-5agenda"), pattern = "matContact.*", full.names = T)
-simu_data = data.frame()
-
-for (time_window in c("day", "week", "month", "full")) {
-  iter=1
-  for(f in simu_files){
-  data = read.csv2(f)
-  
-  graph_data = data %>%
-    mutate(date_posix = floor_date(as_datetime(date_posix), "day")) %>%
-    select(from, to, date_posix) %>%
-    distinct %>%
-    arrange(date_posix)
-  
-  if (time_window=="day") graph_data = graph_data %>% filter(date_posix >= as_date("2020-05-06") & date_posix <= as_date("2020-05-07"))
-    if (time_window=="week") graph_data = graph_data %>% filter(date_posix >= as_date("2020-05-06") & date_posix <= as_date("2020-05-13"))
-    if (time_window=="month") graph_data = graph_data %>% filter(date_posix >= as_date("2020-05-06") & date_posix <= as_date("2020-06-05"))
-    if (time_window=="full") graph_data = graph_data %>% filter(date_posix >= as_date("2020-05-06") & date_posix <= as_date("2020-08-04"))
-    
-  simu_data = rbind(simu_data,
-                    get_assortativity_degree(graph_data, adm_data, iter, "Reconstructed", time_window))
-  
-  iter=iter+1
-  } 
-}
-
-## Observed #####
-graph_data = interaction_real %>%
-  rename(date_posix = date_posix_first) %>%
-  mutate(date_posix = floor_date(date_posix, "day")) %>%
-  filter(date_posix >= as_date("2020-05-06") & date_posix <= as_date("2020-05-07")) %>%
-  select(from, to, date_posix) %>%
-  distinct() %>%
-  arrange(date_posix) %>%
-  mutate(date_posix = as.Date("2020-05-06"))
-
-observed_data = get_assortativity_degree(graph_data, adm_data, 1, "Observed", "day")
-
-## Plot simulated assortativity
-simu_data %>%
-  group_by(network, iter, time_window) %>%
-  summarise(assortativities = median(assortativities), .groups = "drop") %>%
-  mutate(time_window = factor(time_window, c("day", "week", "month", "full"))) %>%
-  ggplot(., aes(x = time_window, y = assortativities, col = as.factor(iter), group = as.factor(iter))) +
-  geom_hline(yintercept = observed_data$assortativities) +
-  geom_line() +
-  scale_color_manual(values = colorRampPalette(c("darkblue", "lightblue"))(10)) +
-  theme_bw() +
-  labs(col = "Simulation", y = "Median assortativity degree", x = "Time window")
-```
-
-
-```{r compare networks}
-adm_data = admission %>%
-  select(id, cat, ward) %>%
-  distinct() %>%
-  mutate(
-    staff = grepl("PE-", id),
-    cat_ag = cat
-    )
-
-## Reconstructed full #####
-
-simu_files = list.files(path = file.path(synthetic_path, "full_0-5agenda"), pattern = "matContact.*", full.names = T)
-simu_data = data.frame()
-
-iter=1
-for(f in simu_files){
-  data = read.csv2(f)
-  
-  graph_data = data %>%
-    mutate(date_posix = floor_date(as_datetime(date_posix), "day")) %>%
-    select(from, to, date_posix) %>%
-    distinct %>%
-    arrange(date_posix)
-    
-  print(nrow(graph_data))
-  simu_data = rbind(simu_data,
-                    get_assortativity_degree(graph_data, adm_data, iter, "Reconstructed", NA))
-  
-  iter=iter+1
-}
-
-## Observed #####
-graph_data = interaction_real %>%
-  rename(date_posix = date_posix_first) %>%
-  mutate(date_posix = floor_date(date_posix, "day")) %>%
-  filter(date_posix >= as_date("2020-05-06") & date_posix <= as_date("2020-05-07")) %>%
-  select(from, to, date_posix) %>%
-  distinct() %>%
-  arrange(date_posix) %>%
-  mutate(date_posix = as.Date("2020-05-06"))
-
-observed_data = get_assortativity_degree(graph_data, adm_data, 1, "Observed", "day")
-
-## Plot simulated assortativity
-simu_data %>% 
-  ggplot(., aes(x = day, y =assortativities, group = as.factor(iter), col = as.factor(iter))) + 
-  geom_hline(yintercept = observed_data$assortativities) + 
-  geom_line() + 
-  theme_bw() +
-  labs(x = "Simulated days", y = "Assortativity degree", col = "Simulation")
 ```
 
 
