@@ -36,5 +36,7 @@ out/loc-nodscov2/
 # Simulated data
 out/scenarios-analysis/
 
+# Codes with paths used on the cluster
+cluster/codes/
 
 
