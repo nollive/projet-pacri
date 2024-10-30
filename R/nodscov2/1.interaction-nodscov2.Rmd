@@ -23,10 +23,8 @@ rm(list = ls())
 
 # Source functions, dictionaries and helpful variables
 source("helper-functions.R")
-source("scenarios-figures-supp.R")
 
 # Working directories and paths
-data_path = file.path("..", "..", "data")
 nodscov2_path = file.path("..", "..", "data", "data-nodscov2") 
 synthetic_path = file.path("..", "..", "data", "data-synthetic-graphs")
 fig_path = file.path("..", "..", "fig")
@@ -35,15 +33,15 @@ fig_path = file.path("..", "..", "fig")
 ## Load Nods-CoV-2 data (not shared)
 ```{r load data, echo=FALSE}
 # Admission dates
-load(file.path(nodscov2_path, "admission_ctc_nodscov2.RData"))
+load(file.path(nodscov2_path, "raw", "admission_ctc_nodscov2.RData"))
 Encoding(admission$hospital) <- 'latin1'
 
 # Interactions 
-list_ward = read.csv(file.path(nodscov2_path, "list_ward_complete.csv")) %>%
+list_ward = read.csv(file.path(nodscov2_path, "raw", "list_ward_complete.csv")) %>%
   rename(date_posix = date_posix_first)
 
 # Sensor distribution 
-sensor = read.csv(file.path(nodscov2_path, "met_timespent_mins_complete.csv"))
+sensor = read.csv(file.path(nodscov2_path, "raw", "met_timespent_mins_complete.csv"))
 
 # Change id of individuals to add PA- or PE- suffix
 sensor = sensor %>% 
@@ -88,7 +86,7 @@ admission_nodscov2 = admission %>%
   filter(
     hospital == "APHP - RAYMOND POINCARÉ", 
     ward == "Reanimation",
-    cat %in% c(cat_medical, cat_paramedical) | is.na(cat)
+    cat %in% names(dict_cat) | is.na(cat)
     ) %>%
   mutate(cat = recode(cat, !!!dict_cat)) %>%
   mutate(cat = ifelse(is.na(cat), "Patient", cat)) %>%
@@ -97,7 +95,6 @@ nrow(admission_nodscov2) # Number of individuals in the database after filtering
 
 # Sensor distribution data 
 # Keep individuals from the ICU of Raymond Poincaré
-# Keep individuals that have a sensor between noon on the 1st day and noon on the 2nd day 
 sensor_nodscov2 = sensor %>%
   mutate(
     DATEREMISEJ1 = as_datetime(DATEREMISEJ1),
@@ -172,7 +169,7 @@ list_ward %>%
   filter(overlap == T) %>%
   arrange(from, to, date_posix) %>%
   select(from, to, date_posix, length, ward_id, wardType, newID) %>%
-  write.csv2(file.path(synthetic_path, "duplicated_and_overlaping_contacts.csv"), quote = F, row.names = F)
+  write.csv2(file.path(nodscov2_path, "raw", "duplicated_and_overlaping_contacts.csv"), quote = F, row.names = F)
 
 ```
 
@@ -197,9 +194,17 @@ interaction_nodscov2 = list_ward %>%
   mutate(data = map(data, fusion_overlapping_contacts)) %>%
   unnest(data) %>%
   distinct() %>%
+  # Remove interactions when individuals do not wear sensors 
+  mutate(n = 1:n()) %>%
+  nest(.by = n) %>%
+  mutate(data = map(data, outside_schedule, sensor_nodscov2)) %>%
+  unnest(data) %>%
+  filter(in_schedule == T) %>%
   # Reorder columns 
   select(from, to, date_posix, length, ward_id, wardType, newID)
 
+# Dataframe to compare the 1st and last date of every individual across the 
+# interaction data, admission data and sensor data
 interaction_first_last = interaction_nodscov2 %>%
   mutate(date_day = as.Date(floor_date(date_posix, "day")),
          date_day_end = as.Date(floor_date(date_posix+length, "day"))) %>%
@@ -257,6 +262,22 @@ admission_nodscov2 %>%
   summarise(n = n(), .groups = "drop")
 
 ```
+
+
+### Save cleaned and selected real data 
+```{r}
+if (!dir.exists(file.path(nodscov2_path, "clean"))) dir.create(file.path(nodscov2_path, "clean"))
+
+# Admission data 
+write.csv2(admission_nodscov2, file.path(nodscov2_path, "clean", "admission_cleaned.csv"), row.names = F, quote = F)
+
+# HCW schedule
+write.csv2(agenda_nodscov2, file.path(nodscov2_path, "clean", "agenda_cleaned.csv"), row.names = F, quote = F)
+
+# Interaction data
+write.csv2(interaction_nodscov2, file.path(nodscov2_path, "clean", "interaction_cleaned.csv"), row.names = F, quote = F)
+```
+
 
 ### Frequency of contacts of more than one hour
 ```{r file for synthetic data algo}
@@ -457,7 +478,7 @@ double_rooms = interaction_nodscov2 %>%
   filter(from %in% patients_ids, to %in% patients_ids) %>%
   distinct(from, to)
 double_rooms = as.list(as.data.frame(t(double_rooms)))
-save(double_rooms, file = file.path(synthetic_path, "double_rooms.rda"))
+save(double_rooms, file = file.path(nodscov2_path, "clean", "double_rooms.rda"))
 
 # Patient rooms
 patient_rooms = data.frame(
@@ -519,24 +540,15 @@ admission_nodscov2 %>%
 
 ### Repeat schedule of HCWs over the 90-day period
 ```{r repeat schedule}
-# Repeat schedule over 90 days
+# Repeat schedule over 90 days for individuals present only one day out 
+# of the two days of recording
 new_agenda = agenda_nodscov2
-for (d in 1:90) {
+for (d in 1:44) {
   new_agenda = rbind(
     new_agenda, 
-    agenda_nodscov2 %>% mutate(firstDate = firstDate+3600*24*d, lastDate = lastDate+3600*24*d))
+    agenda_nodscov2 %>% 
+      mutate(firstDate = firstDate+3600*48*d, lastDate = lastDate+3600*48*d))
 }
-
-new_agenda = new_agenda %>%
-  # Remove the half day of the last day
-  filter(lastDate <= noon_last_day) %>%
-  # Concatenate rows they are consecutive
-  group_by(id, status, cat, ward) %>%
-  nest() %>%
-  mutate(out = map(data, concatenate_schedules)) %>%
-  select(-data) %>% 
-  unnest(out) %>% 
-  ungroup()
 
 # Get new admission dates for HCWs
 new_admission_dates = new_agenda %>%
@@ -616,16 +628,16 @@ sum(is.na(interactions_in_schedule$coherent_interactions))
 ### Save data for synthetic algorithm
 ```{r save synthetic}
 # Interaction data
-write.csv2(interaction_nodscov2, file.path(synthetic_path, "interactions.csv"), quote = F, row.names = F)
+write.csv2(interaction_nodscov2, file.path(synthetic_path, "input", "interactions.csv"), quote = F, row.names = F)
 
 # Admission data
-write.csv2(admission_nodscov2, file.path(synthetic_path, "admission.csv"), quote = F, row.names = F)
+write.csv2(admission_nodscov2, file.path(synthetic_path, "input", "admission.csv"), quote = F, row.names = F)
 
 # HCW schedule
-write.csv2(new_agenda, file.path(synthetic_path, "agenda.csv"),  quote = F, row.names = F)
+write.csv2(new_agenda, file.path(synthetic_path, "input", "agenda.csv"),  quote = F, row.names = F)
 
 # Patient rooms
-write.csv2(patient_rooms, file.path(synthetic_path, "patient_rooms.csv"), quote = F, row.names = F)
+write.csv2(patient_rooms, file.path(synthetic_path, "loc", "patient_rooms.csv"), quote = F, row.names = F)
 ```
 
 ## Plot raw data for supplementary materials
@@ -745,7 +757,7 @@ example_data = graph_data %>%
 graph_example = graph_from_data_frame(example_data, directed = F)
 graph_example = simplify(graph_example)
 
-vertex_atts = data.frame(id = get.vertex.attribute(graph_example, "name")) %>%
+vertex_atts = data.frame(id = vertex_attr(graph_example, "name")) %>%
   left_join(admission_nodscov2, "id")
 
 graph_example = graph_example %>%
@@ -765,7 +777,7 @@ graph_example_PA_PA = graph_from_data_frame(graph_data_PA_PA %>% filter(date_pos
                                             directed = F)
 graph_example_PA_PA = simplify(graph_example_PA_PA)
 
-vertex_atts = data.frame(id = get.vertex.attribute(graph_example_PA_PA, "name")) %>%
+vertex_atts = data.frame(id = vertex_attr(graph_example_PA_PA, "name")) %>%
   left_join(admission_nodscov2, "id")
 
 graph_example_PA_PA = graph_example_PA_PA %>%
@@ -786,7 +798,7 @@ graph_example_PE_PE = graph_from_data_frame(graph_data_PE_PE %>% filter(date_pos
                                             directed = F)
 graph_example_PE_PE = simplify(graph_example_PE_PE)
 
-vertex_atts = data.frame(id = get.vertex.attribute(graph_example_PE_PE, "name")) %>%
+vertex_atts = data.frame(id = vertex_attr(graph_example_PE_PE, "name")) %>%
   left_join(admission_nodscov2, "id") 
 
 graph_example_PE_PE = graph_example_PE_PE %>%
@@ -807,7 +819,7 @@ graph_example_PA_PE = graph_from_data_frame(graph_data_PA_PE %>% filter(date_pos
                                             directed = F)
 graph_example_PA_PE = simplify(graph_example_PA_PE)
 
-vertex_atts = data.frame(id = get.vertex.attribute(graph_example_PA_PE, "name")) %>%
+vertex_atts = data.frame(id = vertex_attr(graph_example_PA_PE, "name")) %>%
   left_join(admission_nodscov2, "id")
 
 graph_example_PA_PE = graph_example_PA_PE %>%

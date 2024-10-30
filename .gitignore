@@ -23,6 +23,7 @@ sim-nodscov2
 *.tar.gz
 infection-network_files
 *.7z
+*.DS_Store
 
 # Raw data
 data/data-nodscov2/

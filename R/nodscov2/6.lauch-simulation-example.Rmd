@@ -4,26 +4,38 @@ output: html_document
 date: "2024-09-20"
 ---
 
-
-```{r test}
+## Load libraries and functions
+```{r}
 # Libraries
 library(Rcpp)
 library(tidyverse)
+library(ggpubr)
 rm(list = ls())
 
-load(file.path("..", "..", "out", "scenarios-analysis", "parameters-admission-nodscov2.RData"))
+# Load functions and model
 source("scenarios-analysis-supp.R")
-sourceCpp(file.path("..", "..", "cpp", "nodscov2", "dev-sensibility-analysis.cpp"))
+sourceCpp(file.path("..", "..", "cpp", "dev-sensibility-analysis.cpp"))
+```
 
-## Transmission parameters 
+## Prepare simulation
+```{r}
+# Load data 
+load(file.path("..", "..", "out", "parameters-synthetic-data.rda"))
+
+## Change parameter values  
 beta_c <- 3/4
-beta_e <- 3600*24/30
-nu <- 12
-env_model = "log-linear" # linear exponential log-linear
+beta_e <- 1e-4
+nu <- 1.8e7 * 2 * 24
+env_model = "linear" # linear exponential log-linear
 
-## RANDOM INDEX CASE
-id_index <- sample(x= admission_sim %>% filter(id %in% admission$id) %>% distinct(id) %>% pull(), size = 1)
-# Update global status (index is infectious when the simulation starts)
+## Draw random index case
+id_index <- sample(x = admission$id[admission$firstDate == "2020-05-06" & admission$firstDate != admission$lastDate], size = 1)
+
+## Get paramed and med ids
+id_paramedical = admission$id[admission$cat == "Paramedical"]
+id_medical = admission$id[admission$cat == "Medical"]
+
+## Update global status of the index case (they are infectious at the start of the simulation)
 global_status <- global_status %>%
   mutate(t_inf = ifelse(id == id_index,
                         as.integer(1),
@@ -38,8 +50,30 @@ global_status <- global_status %>%
                          "INDEX",
                          inf_by))
 
-global_environment
+sum(global_status$t_inf>0)
+```
 
+
+```{r}
+## Conversion factor 
+cf = (24*60*2)
+
+## Cumulative risk - Contact
+  # 1 day
+  1-exp(-beta_c/cf)^cf
+  # 5 days
+  1-exp(-beta_c/cf)^(5*cf)
+
+## Cumulative risk - Environment - Room of 60 m3
+  # 1 day
+  1-exp(-(beta_e/cf)*(B/cf)/60*(nu/cf))^cf
+  # 5 days
+  1-exp(-(beta_e/cf)*(B/cf)/60*(nu/cf))^(5*cf)
+
+```
+
+
+```{r test}
 ## SIMULATION USING RCPP
 result <- simulation(global_interaction = global_interaction,
                      global_environment = global_environment,
@@ -52,6 +86,7 @@ result <- simulation(global_interaction = global_interaction,
                      mu = mu,
                      env_model = env_model,
                      dt = dt)
+print(sum(result$t_inf>1))
 
 i = 1
 while(sum(result$t_inf > 1) < 10) {
@@ -67,6 +102,7 @@ while(sum(result$t_inf > 1) < 10) {
                      mu = mu,
                      env_model = env_model,
                      dt = dt)
+  print(paste0(i, " - ", sum(result$t_inf>1)))
   i = i+1
 }
 
@@ -74,12 +110,59 @@ while(sum(result$t_inf > 1) < 10) {
 summary(result)
 sum(result$t_inf>1) / (nrow(result)-1)
 
-compute_SEIR(result, 90*24*60*2) %>%
+p1 = compute_SEIR(result, 90*24*60*2) %>%
   mutate(time = time*30/(3600*24)) %>% # In days
   ggplot(., aes(x = time, y = count, col = status)) +
   geom_line() +
   theme_bw() +
   labs(x = "Time (in days)", y = "Counts", col =  "")
+
+p2 = result %>% 
+  summarise(
+    n_contact = sum(grepl("CONTACT", inf_by)), 
+    n_env = sum(grepl("ENVIRONMENT", inf_by)),
+    p_contact = sum(grepl("CONTACT", inf_by)) / (n()-1),
+    p_env = sum(grepl("ENVIRONMENT", inf_by)) / (n()-1)
+    ) %>%
+  pivot_longer(cols = everything(), names_to = c("metric", "inf_source"), values_to = "value", names_pattern = "(.*)_(.*)") %>%
+  mutate(metric = ifelse(metric == "n", "Count", "Proportion")) %>%
+  ggplot(., aes(x = inf_source, y = value)) +
+  ggh4x::facet_grid2(cols = vars(metric), scales = "free_y", independent = "y") +
+  geom_bar(stat = "identity", position = position_dodge(), width = 0.5) +
+  theme_bw() +
+  labs(x = "Source of infection", y = "")
+
+
+p3 = data.frame(
+  inf_source = c("Paramedical staff", "Medical staff", "Patient"),
+  value = c(sum(gsub("CONTACT-", "", result$inf_by) %in% id_paramedical), sum(gsub("CONTACT-", "", result$inf_by) %in% id_medical), 
+            sum(grepl("CONTACT-PA", result$inf_by)))
+) %>%
+  ggplot(., aes(x = inf_source, y = value)) +
+  geom_bar(stat = "identity", width = 0.5) +
+  theme_bw() +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 35, hjust = 1)) +
+  labs(y = "Counts")
+
+
+p4 = data.frame(
+  inf_source = c("Corridor", "Patient room", "Nursing station", "Office", "Paramedical resting room", "Medical resting room"),
+  value = c(sum(result$inf_room==22 & grepl("ENVIRONMENT", result$inf_by)), sum(result$inf_room<=17 & grepl("ENVIRONMENT", result$inf_by)),
+            sum(result$inf_room==20 & grepl("ENVIRONMENT", result$inf_by)), sum(result$inf_room==21 & grepl("ENVIRONMENT", result$inf_by)),
+            sum(result$inf_room==19 & grepl("ENVIRONMENT", result$inf_by)), sum(result$inf_room==18 & grepl("ENVIRONMENT", result$inf_by))
+            )
+) %>%
+  ggplot(., aes(x = inf_source, y = value)) +
+  geom_bar(stat = "identity", width = 0.5) +
+  theme_bw() +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 35, hjust = 1)) +
+  labs(y = "Counts")
+
+  
+ggarrange(p1, 
+          ggarrange(p2, p3, p4, ncol = 3, labels = c("B", "D", "E")), 
+          nrow = 2, labels = c("A", ""))
+
 ```
 
 

@@ -140,22 +140,26 @@ distrib_real = rbind(distrib_PAPA, distrib_PEPE, distrib_PAPE) %>%
   mutate(network = "Observed")
 
 # Prepare reconstructed data 
-for (prob in c("0-1", "0-5agenda", "0-5", "biased")) {
+# for (prob in c("0-1", "0-5agenda", "0-5", "biased")) {
   dur_sim = data.frame()
   distrib_simu = data.frame()
   
-  to_read = ifelse(prob!="biased", paste0("full_", prob), prob)
+  # to_read = ifelse(prob!="biased", paste0("full_", prob), prob)
   
-  for (f in list.files(file.path(synthetic_path, to_read), "matContactBuilt", full.names = T)) {
-   data = read.csv2(f)
+  # for (f in list.files(file.path(synthetic_path, to_read), "matContactBuilt", full.names = T)) {
   
+    f = file.path(synthetic_path, "interactions_trimmed.csv")
+    data = read.csv2(f)
+    # network = paste0("Reconstructed-", gsub("^.*Networks|_oneday.csv$", "", f)))
+    network = "Trimmed synthetic"
+      
     dur_sim = bind_rows(
       dur_sim, 
       data %>%
         mutate(date_posix = floor_date(as_datetime(date_posix), "hour")) %>%
         group_by(from, to, date_posix) %>%
         summarise(length = sum(length)/60, .groups = "drop") %>%
-        mutate(network = paste0("Reconstructed-", gsub("^.*Networks|_oneday.csv$", "", f))) %>%
+        mutate(network = network) %>%
         select(length, network)
     )
     
@@ -225,10 +229,10 @@ for (prob in c("0-1", "0-5agenda", "0-5", "biased")) {
         mutate(date_posix = paste0(date_posix, ":00")) %>%
         mutate(
           date_posix = factor(date_posix, levels = unique(date_posix)),
-          network = paste0("Reconstructed-", gsub(".*Networks|_oneday.*$", "", f))
+          network = network
           ) 
     )
-  }
+  # }
   
   # Combine datasets 
   distrib_all = rbind(distrib_real, distrib_simu) %>%
@@ -279,14 +283,16 @@ for (prob in c("0-1", "0-5agenda", "0-5", "biased")) {
   
   # Combine plots
   p = plot_grid(pa, pb, nrow = 2, labels = c("A", "B"), hjust=0, vjust=c(1,0))
+  p
   ggsave(file.path(fig_path, paste0("unique_contacts_", prob, ".png")), p, height = 8, width = 11)  
-}
+# }
 
 ```
 
 ### Network metrics (degree, global efficiency, transitivity, assortativity, temporal correlation, density)
 ```{r compare networks}
 adm_data = admission %>%
+  mutate(cat = ifelse(cat == "Patient", cat, "Staff")) %>%
   select(id, cat, ward) %>%
   distinct()
 
@@ -483,58 +489,6 @@ ggplot(simu_data, aes(x = day, y = assortativities, col = as.factor(iter), group
   theme_bw() +
   expand_limits(y=c(min(simu_data$assortativities), max(observed_data$assortativities))) +
   labs(col = "Simulation", y = "Assortativity degree (by degree)", x = "")
-```
-
-```{r compare networks}
-adm_data = admission %>%
-  select(id, cat, ward) %>%
-  distinct() %>%
-  mutate(
-    staff = grepl("PE-", id),
-    cat_ag = cat
-    )
-
-## Reconstructed full #####
-
-simu_files = list.files(path = file.path(synthetic_path, "full_0-5agenda"), pattern = "matContact.*", full.names = T)
-simu_data = data.frame()
-
-iter=1
-for(f in simu_files){
-  data = read.csv2(f)
-  
-  graph_data = data %>%
-    mutate(date_posix = floor_date(as_datetime(date_posix), "day")) %>%
-    select(from, to, date_posix) %>%
-    distinct %>%
-    arrange(date_posix)
-    
-  print(nrow(graph_data))
-  simu_data = rbind(simu_data,
-                    get_assortativity_degree(graph_data, adm_data, iter, "Reconstructed", NA))
-  
-  iter=iter+1
-}
-
-## Observed #####
-graph_data = interaction_real %>%
-  rename(date_posix = date_posix) %>%
-  mutate(date_posix = floor_date(date_posix, "day")) %>%
-  filter(date_posix >= as_date("2020-05-06") & date_posix <= as_date("2020-05-07")) %>%
-  select(from, to, date_posix) %>%
-  distinct() %>%
-  arrange(date_posix) %>%
-  mutate(date_posix = as.Date("2020-05-06"))
-
-observed_data = get_assortativity_degree(graph_data, adm_data, 1, "Observed", "day")
-
-## Plot simulated assortativity
-simu_data %>% 
-  ggplot(., aes(x = day, y =assortativities, group = as.factor(iter), col = as.factor(iter))) + 
-  geom_hline(yintercept = observed_data$assortativities) + 
-  geom_line() + 
-  theme_bw() +
-  labs(x = "Simulated days", y = "Assortativity degree", col = "Simulation")
 ```
 
 ## Verifications on the synthetic networks

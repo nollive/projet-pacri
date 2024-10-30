@@ -47,6 +47,12 @@ unroll_dates = function(df) {
   return(out)
 }
 
+# Get vector of 30s steps between two dates
+unroll_30s = function(df) {
+  out = seq(df$firstDate, df$lastDate-30, 30)
+  return(out)
+}
+
 # Get vector of days between two dates
 unroll_days = function(df) {
   out = seq.Date(df$firstDate, df$lastDate, 1)
@@ -131,7 +137,107 @@ fusion_overlapping_contacts = function(df) {
   
 }
 
+# Verify whether interactions involving a patient lay within the hospitalization 
+# stay of the patients 
+patient_coherent_interaction = function(df, admission) {
+  ids = unname(unlist(df[, c("from", "to")]))
+  ids = ids[grepl("^PA-", ids)]
+  firstDates = as_datetime(paste(admission$firstDate[admission$id %in% ids], "00:00:00"))
+  lastDates = as_datetime(paste(admission$lastDate[admission$id %in% ids], "23:59:30"))
+  
+  out = all(firstDates <= df$date_posix & lastDates >= df$date_posix+df$length) 
+  return(out)
+}
+
+# Verify whether interactions involving a HCW lay within their presence in the ward 
+hcw_coherent_interaction = function(df, agenda) {
+  ids = unname(unlist(df[, c("from", "to")]))
+  ids = ids[grepl("^PE-", ids)]
+  presence_dates = agenda %>%
+    filter(id %in% ids, floor_date(firstDate, "day") == floor_date(df$date_posix, "day"))
+  
+  out = all(presence_dates$firstDate <= df$date_posix & presence_dates$lastDate >= df$date_posix+df$length) 
+  return(out)
+}
+
+#
+outside_schedule = function(df, sensor_nodscov2) {
+  
+  one_slot = 0
+  d = df$date_posix
+  e = df$date_posix + df$length
+  
+  for (f in unname(unlist(df[,c("from", "to")]))) {
+    df_in = sensor_nodscov2 %>% 
+      filter(id == f) %>%
+      select(id, firstDate_sensor, lastDate_sensor) %>%
+      mutate(
+        firstDate_in = as.numeric(firstDate_sensor <= d & d<= lastDate_sensor),
+        lastDate_in = as.numeric(e <= lastDate_sensor & e >= firstDate_sensor) 
+      ) %>%
+      mutate(date_in = firstDate_in+lastDate_in)
+    
+    if (any(df_in$date_in == 2)) {
+      df$in_schedule = T
+      
+    } else if (any(df_in$date_in == 1)) {
+      one_slot = one_slot + 1
+      if (df_in$firstDate_in[df_in$date_in == 1] == 1) {
+        new_firstDate = df$date_posix
+        new_length = as.numeric(difftime(df_in$lastDate_sensor[df_in$date_in == 1], new_firstDate, units = "sec"))
+      } else {
+        new_firstDate = df_in$firstDate_sensor[df_in$date_in==1]
+        new_length = as.numeric(difftime(df$date_posix+df$length, new_firstDate, units = "secs"))
+      }
+      
+      df$date_posix = new_firstDate
+      df$length = new_length
+      df$in_schedule = T
+      
+    } else {
+      one_slot = one_slot + 1
+      df$in_schedule = F
+    }
+  }
+  
+  if (one_slot > 1) warning(paste("Following interaction with both participants not present in the ward:", df$from, df$to, d))
+  return(df)
+}
+
 # Functions to analyze networks-------------------------------------------------
+# Function to trim synthetic networks when contacts occur when an individual is not 
+# present in the ward
+trim_interactions_agenda = function(df, admission, agenda) {
+  endDate = df$date_posix + df$length
+  pa = c(df$from, df$to)[grepl("^PA-", c(df$from, df$to))]
+  pe = c(df$from, df$to)[grepl("^PE-", c(df$from, df$to))]
+  allLastDates = c()
+  allFirstDates = c()
+  
+  df$before_schedule = FALSE
+  
+  if (length(pa)>0) {
+    allLastDates = c(as_datetime(paste(admission$lastDate[admission$id %in% pa], "23:59:30")))
+    allFirstDates = c(as_datetime(paste(admission$firstDate[admission$id %in% pa], "00:00:00")))
+  } 
+  
+  if (length(pe)>0) {
+    pe_lastDates = agenda %>% 
+      filter(id %in% pe, floor_date(lastDate, "day") == floor_date(endDate, "day")) %>% 
+      pull(lastDate)
+    pe_firstDates = agenda %>%
+      filter(id %in% pe, floor_date(firstDate, "day") == floor_date(df$date_posix, "day")) %>% 
+      pull(firstDate)
+    allLastDates = c(allLastDates, pe_lastDates)
+    allFirstDates = c(allFirstDates, pe_firstDates)
+  }
+  
+  if (any(allLastDates < endDate)) df$length = as.numeric(difftime(min(allLastDates), df$date_posix, units = "secs"))
+  if (any(allFirstDates > df$date_posix)) df$before_schedule = T
+  
+  return(df)
+}
+
 # Function to return a set of network metrics (from Leclerc et al., 2024)
 # https://gitlab.pasteur.fr/qleclerc/network_algorithm/-/tree/main?ref_type=heads
 get_net_metrics = function(graph_data, adm_data, iter = 0, network = "Observed"){
@@ -245,8 +351,6 @@ temporal_correlation = function(graph_data){
   
   return(temp_cor)
 }
-
-
 
 
 # Functions for plots-----------------------------------------------------------

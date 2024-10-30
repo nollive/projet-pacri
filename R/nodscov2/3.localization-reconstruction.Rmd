@@ -1,5 +1,5 @@
 ---
-title: "localization-nodscov2"
+title: "location-nodscov2"
 author: "Olivier GAUFRÈS"
 date: "2024-05-07"
 output: html_document
@@ -24,24 +24,21 @@ source("helper-functions.R")
 
 # Paths
 nodscov2_synthetic_path <- file.path("..", "..", "data", "data-synthetic-graphs") 
-loc_nodscov2_path <- file.path("..", "..", "out", "loc-nodscov2")
-fig_path <- file.path("..", "..", "out","fig")
-ind_paths_path <- file.path(fig_path, "individual-paths")
-
-if (!dir.exists(ind_paths_path)) dir.create(ind_paths_path, recursive = TRUE)
-if (!dir.exists(loc_nodscov2_path)) dir.create(loc_nodscov2_path, recursive = TRUE)
-if (!dir.exists(fig_path)) dir.create(fig_path, recursive = TRUE)
+nodscov2_path <- file.path("..", "..", "data", "data-nodscov2") 
 ```
 
 ## Load Nods-Cov-2 (synthetic) data 
 ```{r Load data}
 # Admission data
-admission = read.csv2(file.path(nodscov2_synthetic_path, "admission.csv")) %>%
+admission = read.csv2(file.path(nodscov2_synthetic_path, "input", "admission.csv")) %>%
   mutate(firstDate = as_date(firstDate), lastDate = as_date(lastDate))
 
 # HCW schedule 
-agenda = read.csv2(file.path(nodscov2_synthetic_path, "agenda.csv")) %>%
+agenda = read.csv2(file.path(nodscov2_synthetic_path, "input", "agenda.csv")) %>%
   mutate(firstDate = as_datetime(firstDate), lastDate = as_datetime(lastDate))
+
+# Patient rooms 
+patient_rooms = read.csv2(file.path(nodscov2_synthetic_path, "loc", "patient_rooms.csv"))
 
 # Interaction data 
 interactions = read.csv2(file.path(nodscov2_synthetic_path, "full_0-5agenda", "matContactBuiltSimulatedCtcNetworks1_oneday.csv")) %>%
@@ -50,26 +47,66 @@ interactions = read.csv2(file.path(nodscov2_synthetic_path, "full_0-5agenda", "m
   rename(from_status = status) %>%
   left_join(., admission %>% select(id, status), by = c("to" = "id")) %>%
   rename(to_status = status)
-
-# Patient rooms 
-patient_rooms = read.csv2(file.path(nodscov2_synthetic_path, "patient_rooms.csv"))
 ```
 
-## Get basic information
+## Cut interaction data to match hours of presence in the ward
 ```{r}
-# Ids of participants with interaction
+## Ids of participants by category
+id_paramedical <- admission %>% filter(cat == "Paramedical") %>% pull(id)
+id_medical <- admission %>% filter(cat == "Medical") %>% pull(id)
+id_hcw <- admission %>% filter(status == "PE") %>% pull(id)
+id_patient <- admission %>% filter(status == "PA") %>% pull(id)
+
+# # Cut interactions
+# interactions = interactions %>%
+#   mutate(n = 1:n()) %>%
+#   nest(.by = n) %>%
+#   mutate(data = map(data, trim_interactions_agenda, admission, agenda)) %>%
+#   unnest(data) %>%
+#   filter(length > 0, before_schedule == F) %>% 
+#   select(from, to, date_posix, length, from_status, to_status) 
+# 
+# # Save new interactions, they will be used in the rest of the code
+# write.csv2(interactions, file.path(nodscov2_synthetic_path, "input", "interactions_trimmed.csv"), quote = F, row.names = F)
+# 
+# # Verify that interactions are within the schedule of healthcare workers
+# interactions %>%
+#   filter(from %in% id_hcw | to %in% id_hcw) %>%
+#   mutate(n = 1:n()) %>%
+#   nest(.by = n) %>%
+#   mutate(data = map(data, hcw_coherent_interaction, agenda)) %>%
+#   select(data) %>%
+#   unnest(data) %>%
+#   summarise(sum(!data))
+# 
+# # Get number of interactions that are not within the hospitalization stays of patients 
+# interactions %>%
+#   filter(from %in% id_patient | to %in% id_patient) %>%
+#   mutate(n = 1:n()) %>%
+#   nest(.by = n) %>%
+#   mutate(data = map(data, patient_coherent_interaction, admission)) %>%
+#   select(data) %>%
+#   unnest(data) %>%
+#   summarise(sum(!data))
+
+# Verify that all individuals interact
+interactions = read.csv2(file.path(nodscov2_synthetic_path, "input", "interactions_trimmed.csv")) %>%
+  mutate(date_posix = as_datetime(date_posix))
 id_interacting <- interactions %>%
   pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>%
   distinct(individual) %>% 
+  arrange(individual) %>%
   pull()
-id_total <- admission %>% distinct(id) %>% pull()
-id_not_interacting <- setdiff(id_total, id_interacting)
+id_total <- admission %>% distinct(id) %>% arrange(id) %>% pull()
+identical(id_total, id_interacting)
 
-## Ids of participants by category
-id_paramedical <- admission %>% filter(id %in% id_interacting & cat == "Paramedical") %>% pull(id)
-id_medical <- admission %>% filter(id %in% id_interacting & cat == "Medical") %>% pull(id)
-id_hcw <- admission %>% filter(id %in% id_interacting & status == "PE") %>% pull(id)
-id_patient <- admission %>% filter(id %in% id_interacting & status == "PA") %>% pull(id)
+# Individuals with no interactions are patients present only in the morning 
+# of the last day of the simulation
+# We keep them in the simulations but they won't participate much in the 
+# transmission dynamics 
+id_not_interacting <- setdiff(id_total, id_interacting)
+admission %>%
+  filter(id %in% id_not_interacting)
 ```
 
 ## Create the room dataframe 
@@ -81,8 +118,7 @@ n_patient_rooms = max(patient_rooms$room)
 id_room_patient = as.character(unique(patient_rooms$room))
 
 # Id of double room
-load(file.path(nodscov2_synthetic_path, "double_rooms.rda"))
-double_rooms = lapply(double_rooms, function(x) paste0("PA-", x))
+load(file.path(nodscov2_path, "clean", "double_rooms.rda"))
 double_rooms_id = sort(unique(patient_rooms$room[patient_rooms$id %in% unlist(double_rooms)]))
 
 # Dataframe with all rooms
@@ -93,8 +129,8 @@ rooms = patient_rooms %>%
     room = as.character(room)
     ) %>% 
   bind_rows(.,
-            data.frame(room = "Medical Restroom", id = "R-M-PE", volume = 30 * 2.2, id_room = as.character(n_patient_rooms+1)),
-            data.frame(room = "Paramedical Restroom", id = "R-PM-PE", volume =  40 * 2.2, id_room = as.character(n_patient_rooms+2)),
+            data.frame(room = "Medical resting room", id = "R-M-PE", volume = 30 * 2.2, id_room = as.character(n_patient_rooms+1)),
+            data.frame(room = "Paramedical resting room", id = "R-PM-PE", volume =  40 * 2.2, id_room = as.character(n_patient_rooms+2)),
             data.frame(room = "Nursing station", id = "PM-PE", volume = 20 * 2.2, id_room = as.character(n_patient_rooms+3)),
             data.frame(room = "Office", id = "M-PE", volume = 20 * 2.2, id_room = as.character(n_patient_rooms+4)),
             data.frame(room = "Corridor", id = "ALL", volume = 200 * 2.2, id_room = as.character(n_patient_rooms+5))
@@ -106,46 +142,257 @@ rooms = patient_rooms %>%
 # Global interaction object
 begin_date <- min(interactions$date_posix)
 end_date <- max(interactions$date_posix + interactions$length)
-time_spent <- difftime(end_date, begin_date, units = "mins")  
+time_spent <- difftime(end_date, begin_date, units = "secs")  
 
-n_subdivisions <- floor(as.numeric(time_spent) * 2) ## Time spent * hours * minutes * 2 (number of time subdivisions)
+n_subdivisions <- as.numeric(time_spent) / 30 ## Time spent * hours * minutes * 2 (number of time subdivisions)
 ## floor because of the manner we extract the interactions (=30sec, i.e. at  the end, interactions are <30sec -> we dont take these)
 
-## t = 1 -> [0,30[sec
-global_interaction <- lapply(1:n_subdivisions, function(t){
-  interactions_t <- interactions %>%
-    filter(date_posix <= (begin_date + (t-1)*30) & (date_posix + length > begin_date + (t)*30) ) %>%
-    mutate(time = t) %>%
-    select(from, to, time, from_status, to_status)
+# # # t = 1 -> [0,30[sec
+# global_interaction <- lapply(1:n_subdivisions, function(t){
+#   interactions_t <- interactions %>%
+#     filter(date_posix <= (begin_date + (t-1)*30), date_posix + length >= begin_date + (t)*30 ) %>%
+#     mutate(time = t) %>%
+#     select(from, to, time, from_status, to_status)
+# 
+#   return(interactions_t)
+# })
+# save(global_interaction, file = file.path(nodscov2_synthetic_path, "loc", "global_interaction.rda"))
+# 
+# # List of interaction clusters
+# clusters <- lapply(global_interaction, function(df) {
+#   # df to non oriented graph based on interaction happening at time t
+#   graph <- graph_from_data_frame(df, directed = FALSE)
+#   # Extract connected component
+#   clusters <- components(graph)$membership
+#   # clusters to list (unique list of individual)
+#   clusters_list <- lapply(unique(clusters), function(i) {
+#     #for each cluster i, we extract the vertices/nodes of the graph -> individual names in each clusters
+#     as.character(V(graph)[clusters == i]$name)
+#   })
+#   return(clusters_list)
+# })
+# save(clusters, file = file.path(nodscov2_synthetic_path, "loc", "clusters.rda"))
 
-  return(interactions_t)
-})
-save(global_interaction, file = file.path(loc_nodscov2_path, "global_interaction.rda"))
-
-# List of interaction clusters
-clusters <- lapply(global_interaction, function(df) {
-  # df to non oriented graph based on interaction happening at time t
-  graph <- graph_from_data_frame(df, directed = FALSE)
-  # Extract connected component
-  clusters <- components(graph)$membership
-  # clusters to list (unique list of individual)
-  clusters_list <- lapply(unique(clusters), function(i) {
-    #for each cluster i, we extract the vertices/nodes of the graph -> individual names in each clusters
-    as.character(V(graph)[clusters == i]$name)
-  })
-  return(clusters_list)
-})
-save(clusters, file = file.path(loc_nodscov2_path, "clusters.rda"))
-
-# load(file.path(loc_nodscov2_path, "global_interaction.rda"))
-# load(file.path(loc_nodscov2_path, "clusters.rda"))
+load(file.path(nodscov2_synthetic_path, "loc", "global_interaction.rda"))
+load(file.path(nodscov2_synthetic_path, "loc", "clusters.rda"))
 ```
+
+## Location inference for all individuals during close-proximity interactions
+```{r Loc for interactions}
+############################################################
+## ASSIGNING location FOR THE INDIVIDUALS INTERACTING ##
+############################################################
+# This code chunk uses the following input data
+    # n_subdivisions
+    # id_total
+    # id_medical
+    # id_paramedical
+    # begin_date
+    # global_interaction
+    # clusters
+
+# It returns the following objects
+    # global_location : list with the localisation of all interaction clusters
+    # cluster info list
+
+
+## Store info when there is more than one patient in clusters -> fix later
+cluster_info_list <- list()
+global_location <- list()
+
+global_location <- lapply(1:n_subdivisions, function(t) {
+  location_t <- data.frame(id = id_total, location = NA, time = t) ##only for individuals that interact
+  # Interactions at time t
+  interactions_t <- global_interaction[[t]] %>% mutate(location = NA)
+  clusters_t <- clusters[[t]]
+  # For each clusters of individuals at time t
+  lapply(clusters_t, function(cluster) {
+
+    # Remove duplicates if any
+    cluster = sort(unique(cluster))
+
+    ###########################
+    ## CLUSTER WITH PATIENTS ##
+    ###########################
+    # IF THERE IS NO PATIENTS
+    NO_PATIENT <- all(!grepl("^PA-", cluster))
+    # IF THERE IS ONLY ONE PATIENT IN THE CLUSTER
+    ONE_PATIENT <- sum(grepl("^PA-", cluster)) == 1
+    one_patient_room <- ifelse(ONE_PATIENT, rooms$id_room[rooms$id %in% cluster[grepl("^PA-", cluster)]], "-2")
+    ## IF IN DOUBLE ROOM (MUST BE ONLY THE TWO PATIENTS, NOT THE TWO PATIENT + ANOTHER PATIENT)
+    patient_rooms = unique(rooms$id_room[rooms$id %in% cluster[grepl("^PA-", cluster)]])
+    IN_DOUBLE_ROOM_N1 <- !NO_PATIENT & all(patient_rooms == double_rooms_id[1])
+    IN_DOUBLE_ROOM_N2 <- !NO_PATIENT & all(patient_rooms == double_rooms_id[2])
+    # IF THERE IS MULTIPLE PATIENTS IN THE CLUSTER (AND NOT IN DOUBLE ROOM)
+    MULTIPLE_PATIENT <- sum(grepl("^PA-", cluster)) > 1 & !(IN_DOUBLE_ROOM_N1 | IN_DOUBLE_ROOM_N2)
+
+    ##############################
+    ## CLUSTER WITHOUT PATIENTS ##
+    ##############################
+    NO_MEDICAL <- sum(cluster %in% id_medical) == 0
+    NO_PARAMEDICAL <- sum(cluster %in% id_paramedical) == 0
+
+    ONLY_PARAMEDICAL <- NO_PATIENT & NO_MEDICAL
+    ONLY_MEDICAL <- NO_PATIENT & NO_PARAMEDICAL
+    MEDICAL_AND_PARAMEDICAL <- NO_PATIENT & !NO_MEDICAL & !NO_PARAMEDICAL
+
+    #####################
+    ## TIME CONDITIONS ##
+    #####################
+    time_t <- begin_date + (t-1)*30
+    DAY <- between(hour(time_t), 7, 20)
+    NIGHT <- between(hour(time_t), 21, 24) | between(hour(time_t), 0, 6)
+
+    #################################
+    ## location OF THE CLUSTER ##
+    #################################
+    cluster_location <- case_when(
+      MULTIPLE_PATIENT ~ rooms$id_room[rooms$id == "ALL"],
+      IN_DOUBLE_ROOM_N1 ~ as.character(double_rooms_id[1]),
+      IN_DOUBLE_ROOM_N2 ~ as.character(double_rooms_id[2]),
+      ONE_PATIENT ~ one_patient_room,
+      ONLY_MEDICAL ~ rooms$id_room[rooms$id == "M-PE"], ## ONLY MEDICAL INTERACTING -> OFFICE
+      ONLY_PARAMEDICAL ~ rooms$id_room[rooms$id == "PM-PE"], ## ONLY PARAMEDICAL INTERACTING -> NURSING STATION
+      MEDICAL_AND_PARAMEDICAL ~ rooms$id_room[rooms$id == "PM-PE"], ## ONLY MED AND PARAMED -> NURSING STATION
+      .default = "-3"
+    )
+    ## Assign the location for individuals inside the cluster
+    # <<- to edit location_t defined outside clusters_t's lapply scope
+    interactions_t$location[interactions_t$from %in% cluster] <<- cluster_location ## if from is in the cluster, to will be also
+    location_t$location[location_t$id %in% cluster] <<- cluster_location
+
+    ## MULTIPLE PATIENTS IN THE CLUSTER --> TEMPORARY, FIXED LATER
+    if (MULTIPLE_PATIENT) {
+      cluster_possible_location <- rooms$id_room[rooms$id %in% cluster[grepl("^PA-", cluster)]]
+      cluster_info <- data.frame(time = t, Patients = cluster[grepl("^PA-", cluster)], cluster = toString(cluster))
+      cluster_info_list <<- append(cluster_info_list, list(cluster_info))
+    }
+  })
+
+  ## ADD THE location IN GLOBAL_INTERACTION (we could have added the cluster id but its useless for now)
+  global_interaction[[t]] <<- interactions_t
+  return(location_t)
+})
+
+save(global_location, file = file.path(nodscov2_synthetic_path, "loc", "global_location.rda"))
+# load(file.path(nodscov2_synthetic_path, "loc", "global_location.rda"))
+```
+
+## Smooth individual trajectories and associate location when individuals are 
+## present without close-proximity interactions  
+```{r}
+# SMOOTH INDIVIDUAL TRAJECTORIES
+# Get the data in wide format
+locations = do.call("rbind", global_location) %>%
+  pivot_wider(names_from = id, values_from = location) %>%
+  arrange(time) %>%
+  select(-time) 
+rm(global_location)
+
+# Add when individuals are not present in the ward and add their room 
+# otherwise (Patients)
+identical(names(locations[, id_patient]), id_patient)
+locations[,id_patient[id_patient %in% id_interacting]] = as_tibble(mapply(function(x, y) {
+  # Assign "NOT HERE" when not present in the ward
+  firstDate = as_datetime(paste(admission$firstDate[admission$id==y], "00:00:00"))
+  firstDate = case_when(begin_date>firstDate ~ begin_date, .default = firstDate)
+  lastDate = as_datetime(paste(admission$lastDate[admission$id==y], "23:59:30"))
+  lastDate = case_when(end_date<lastDate ~ end_date, .default = lastDate)
+  allDates = seq(begin_date, end_date-30, 30)
+  present = seq(firstDate, lastDate-30, 30)
+  not_present = which(!allDates %in% present)
+  if (length(not_present) != sum(is.na(x[not_present]))) stop(paste(y, "has assigned location when individual not in the ward"))
+  x[not_present] = -1
+  
+  # Assign patient room when present in the ward and not interacting
+  x[is.na(x)] = patient_rooms$room[patient_rooms$id==y]
+  return(x)
+},
+locations[, id_patient[id_patient %in% id_interacting]],
+id_patient[id_patient %in% id_interacting]))
+
+# Add when individuals are not present in the ward and smooth
+# their individual trajectory (HCW)
+identical(names(locations[, id_hcw]), id_hcw)
+patient_rooms_ids = as.character(sort(unique(patient_rooms$room)))
+locations[,id_hcw] = as_tibble(mapply(function(x, y) {
+  # Assign "NOT HERE" when not present in the ward
+  allDates = seq(begin_date, end_date-30, 30)
+  present = agenda %>% 
+    filter(id == y) %>%
+    select(firstDate, lastDate) %>%
+    mutate(n = 1:n()) %>%
+    nest(.by = n) %>%
+    mutate(data=map(data, unroll_30s)) %>%
+    unnest(data) %>%
+    pull(data)
+  not_present = which(!allDates %in% present)
+  if (!all(is.na(x[not_present]))) stop(paste(y, "has location assigned when not present in the ward"))
+  x[not_present] = -1
+  
+  # Split vector into elements of consecutive identical values  
+  x_split = split(x, data.table::rleid(x))
+  
+  # Assign locations to elements
+  for (k in seq_along(x_split)) {
+    
+    current = x_split[[k]]
+    if (!is.na(unique(current))) next()
+    
+    before = ifelse(k == 1, "-1", unique(x_split[[k-1]]))
+    after = ifelse(k == length(x_split), "-1", unique(x_split[[k+1]]))
+    
+      # If between patient room and less than 5 mins
+    if (before == after & length(current) <= 10 & before %in% patient_rooms_ids) {
+      x_split[[k]] = rep(before, length(current))
+    } else if (length(current) == 1) {
+      # If between two different rooms and only 30 seconds --> corridor
+      x_split[[k]] = c("22")
+    } else {
+      # If between two different rooms and/or more than 5 mins
+      resting_room = ifelse(y %in% id_medical, "18", "19")
+      x_split[[k]] = c("22", rep(resting_room, length(current)-2), "22")
+    }
+  }
+
+  # Return 
+  out = unlist(x_split)
+  return(out)
+},
+locations[,id_hcw], 
+id_hcw))
+
+# Convert locations into a list
+write.csv2(locations, file.path(nodscov2_synthetic_path, "loc", "locations_long_format.csv"), quote = F, row.names = F)
+locations = locations %>%
+    mutate(time = 1:n()) %>%
+    pivot_longer(-time, names_to = "id", values_to = "location")
+global_location = split(locations, f = locations$time)
+rm(locations)
+```
+
+## Save to an .RData file
+```{r Save to .RData}
+save(clusters,
+     global_location,
+     global_interaction,
+     admission,
+     rooms,
+     # shifts, # Check whether to remove or not 
+     id_hcw,
+     id_patient,
+     begin_date,
+     end_date,
+     n_subdivisions,
+     file = file.path(nodscov2_synthetic_path, "loc", "nodscov2-reconstructed-locations.rda"))
+```
+
 
 ## SHIFTS INFERENCE
 ```{r Shifts}
 # # Pivot -> get all int for each individual
 # df_long <- data %>%
-#   mutate(date_posix_end = date_posix_first + length) %>% 
+#   mutate(date_posix_end = date_posix_first + length) %>%
 #   pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>%
 #   arrange(individual, date_posix_first)
 # 
@@ -178,450 +425,259 @@ save(clusters, file = file.path(loc_nodscov2_path, "clusters.rda"))
 
 ```
 
-## Localization inference for all individuals
-```{r Loc for interactions}
-############################################################
-## ASSIGNING localization FOR THE INDIVIDUALS INTERACTING ##
-############################################################
-# This code chunk uses the following input data
-    # n_subdivisions
-    # id_interacting
-    # id_medical
-    # id_paramedical
-    # begin_date
-    # global_interaction
-    # clusters
-
-# It returns the following objects
-    # global_localization : list with the localisation of all interaction clusters
-    # cluster info list
-
-
-## Store info when there is more than one patient in clusters -> fix later
-cluster_info_list <- list()
-global_localization <- list()
-
-global_localization <- lapply(1:n_subdivisions, function(t) {
-  localization_t <- data.frame(id = id_interacting, localization = NA, time = t) ##only for individuals that interact
-  # Interactions at time t
-  interactions_t <- global_interaction[[t]] %>% mutate(localization = NA)
-  clusters_t <- clusters[[t]]
-  # For each clusters of individuals at time t
-  lapply(clusters_t, function(cluster) {
-
-    # Remove duplicates if any
-    cluster = sort(unique(cluster))
-
-    ###########################
-    ## CLUSTER WITH PATIENTS ##
-    ###########################
-    # IF THERE IS NO PATIENTS
-    NO_PATIENT <- all(!grepl("^PA-", cluster))
-    # IF THERE IS ONLY ONE PATIENT IN THE CLUSTER
-    ONE_PATIENT <- sum(grepl("^PA-", cluster)) == 1
-    one_patient_room <- ifelse(ONE_PATIENT, rooms$id_room[rooms$id == cluster[grepl("^PA-", cluster)]], "-2")
-    ## IF IN DOUBLE ROOM (MUST BE ONLY THE TWO PATIENTS, NOT THE TWO PATIENT + ANOTHER PATIENT)
-    IN_DOUBLE_ROOM_N1 <- !NO_PATIENT & all(cluster[grepl("^PA-", cluster)] %in% double_rooms[[1]])
-    IN_DOUBLE_ROOM_N2 <- !NO_PATIENT & all(cluster[grepl("^PA-", cluster)] %in% double_rooms[[2]])
-    # IF THERE IS MULTIPLE PATIENTS IN THE CLUSTER (AND NOT IN DOUBLE ROOM)
-    MULTIPLE_PATIENT <- sum(grepl("^PA-", cluster)) > 1 & !(IN_DOUBLE_ROOM_N1 | IN_DOUBLE_ROOM_N2)
-
-    ##############################
-    ## CLUSTER WITHOUT PATIENTS ##
-    ##############################
-    NO_MEDICAL <- sum(cluster %in% id_medical) == 0
-    NO_PARAMEDICAL <- sum(cluster %in% id_paramedical) == 0
-
-    ONLY_PARAMEDICAL <- NO_PATIENT & NO_MEDICAL
-    ONLY_MEDICAL <- NO_PATIENT & NO_PARAMEDICAL
-    MEDICAL_AND_PARAMEDICAL <- NO_PATIENT & !NO_MEDICAL & !NO_PARAMEDICAL
-
-    #####################
-    ## TIME CONDITIONS ##
-    #####################
-    time_t <- begin_date + (t-1)*30
-    DAY <- between(hour(time_t), 7, 20)
-    NIGHT <- between(hour(time_t), 21, 24) | between(hour(time_t), 0, 6)
-
-    #################################
-    ## Localization OF THE CLUSTER ##
-    #################################
-    cluster_localization <- case_when(
-      MULTIPLE_PATIENT ~ rooms$id_room[rooms$id == "ALL"],
-      IN_DOUBLE_ROOM_N1 ~ as.character(double_rooms_id[1]),
-      IN_DOUBLE_ROOM_N2 ~ as.character(double_rooms_id[2]),
-      ONE_PATIENT ~ one_patient_room,
-      ONLY_MEDICAL ~ rooms$id_room[rooms$id == "M-PE"], ## ONLY MEDICAL INTERACTING -> OFFICE
-      ONLY_PARAMEDICAL ~ rooms$id_room[rooms$id == "PM-PE"], ## ONLY PARAMEDICAL INTERACTING -> NURSING STATION
-      MEDICAL_AND_PARAMEDICAL ~ rooms$id_room[rooms$id == "PM-PE"], ## ONLY MED AND PARAMED -> NURSING STATION
-      .default = "-3"
-    )
-    ## Assign the localization for individuals inside the cluster
-    # <<- to edit localization_t defined outside clusters_t's lapply scope
-    interactions_t$localization[interactions_t$from %in% cluster] <<- cluster_localization ## if from is in the cluster, to will be also
-    localization_t$localization[localization_t$id %in% cluster] <<- cluster_localization
-
-    ## MULTIPLE PATIENTS IN THE CLUSTER --> TEMPORARY, FIXED LATER
-    if (MULTIPLE_PATIENT) {
-      cluster_possible_localization <- rooms$id_room[rooms$id %in% cluster[grepl("^PA-", cluster)]]
-      cluster_info <- data.frame(time = t, Patients = cluster[grepl("^PA-", cluster)], cluster = toString(cluster))
-      cluster_info_list <<- append(cluster_info_list, list(cluster_info))
-    }
-  })
-
-  ## ADD THE LOCALIZATION IN GLOBAL_INTERACTION (we could have added the cluster id but its useless for now)
-  global_interaction[[t]] <<- interactions_t
-  return(localization_t)
-})
-
-save(global_localization, file = file.path(loc_nodscov2_path, "global_localization.rda"))
-# load(file.path(loc_nodscov2_path, "global_localization.rda"))
-```
-
-```{r}
-# SMOOTH INDIVIDUAL TRAJECTORIES
-# Get the data in wide format
-localizations = do.call("rbind", global_localization) %>%
-  pivot_wider(names_from = id, values_from = localization) %>%
-  arrange(time) %>%
-  select(-time) 
-
-# Add when individuals are not present in the ward and add their room 
-# otherwise (Patients)
-identical(names(localizations[, id_patient]), id_patient)
-localizations[,id_patients] = mapply(function(x, y) {
-  # Assign "NOT HERE" when not present in the ward
-  firstDate = as_datetime(paste(admission$firstDate[admission$id==y], ""))
-  lastDate = as_datetime(paste(admission$lastDate[admission$id==y], ""))
-  allDates = seq(begin_date, end_date, 30)
-  present = seq(firstDate, lastDate, 30)
-  not_present = which(!allDates %in% present)
-  x[not_present] = -1
-  
-  # Assign patient room when present in the ward and not interacting
-  x[is.na(x)] = patient_rooms$room[patient_rooms$id==y]
-  return(x)
-},
-localizations[, id_patient],
-id_patient)
-
-# Add when individuals are not present in the ward and smooth
-# their individual trajectory (HCW)
-localization[,id_hcw] = sapply(localization[,id_hcw], function(x) {
-  i = names(x)
-  
-  # Assign "NOT HERE" when not present in the ward
-  allDates = seq(begin_date, end_date, 30)
-  present = agenda %>% 
-    filter(id == i) %>%
-    mutate(n = 1:n()) %>%
-    nest(.by = n) %>%
-    mutate(data=map(data, )) %>%
-    select(data) %>%
-    unnest(data) %>%
-    pull(data)
-  not_present = which(!allDates %in% present)
-  x[not_present] = -1
-  
-  # Assign patient room when present in the ward and not interacting
-  x[is.na(x)] = patient_rooms$room[patient_rooms$id==i]
-})
-
-# Reconstruct localizations when individuals are not interacting
-localization[,id_hcw] = sapply(localization[,id_hcw], function(x) {
-  
-})
-
-# Convert localizations into a list
-localizations = localizations %>%
-    mutate(time = 1:n()) %>%
-    pivot_longer(-time, names_to = "id", values_to = "localization")
-global_localization = split(localizations, f = localizations$time)
-```
-
-
-
 ## SMOOTHING (SUCCESSIVE INTERACTION IN THE SAME ROOM WITH <5min GAP)
 ```{r}
-# Function to smooth individual trajectories
-smoothing_localization <- function(global_interaction, global_localization) {
-  interactions <- do.call("rbind", global_interaction)
-  localizations <- do.call("rbind", global_localization)
-  smoothed_loc <- data.frame()
-  
-  interactions_long <- interactions %>%
-    pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>%
-    arrange(individual, time)
-
-  for (ind in unique(interactions_long$individual)) {
-    ind_interactions <- interactions_long %>% filter(individual == ind) %>% arrange(time)
-    ind_localizations <- localizations %>% filter(id == ind)
-    
-    if (nrow(ind_interactions) > 2) {
-      for (i in 2:nrow(ind_interactions)) {
-        time_gap <- ind_interactions$time[i] - ind_interactions$time[i - 1]
-        
-        if (time_gap == 2){
-          previous_loc <- ind_localizations %>% filter(time == ind_interactions$time[i - 1]) %>% pull(localization)
-          current_loc <- ind_localizations %>% filter(time == ind_interactions$time[i]) %>% pull(localization)
-          if (previous_loc == current_loc & current_loc %in% id_room_patient){
-            ind_localizations$localization[ind_localizations$time == ind_interactions$time[i] - 1] <- current_loc
-            }
-        }
-        if (time_gap > 2 & time_gap <= 10) {
-          previous_loc <- ind_localizations %>% filter(time == ind_interactions$time[i - 1]) %>% pull(localization)
-          current_loc <- ind_localizations %>% filter(time == ind_interactions$time[i]) %>% pull(localization)
-          if (previous_loc == current_loc & current_loc %in% id_room_patient){
-            for (t in (ind_interactions$time[i - 1] + 1):(ind_interactions$time[i] - 1)) {
-            ind_localizations$localization[ind_localizations$time == t] <- current_loc
-            }
-          }
-        }
-      }
-    }
-    smoothed_loc <- rbind(smoothed_loc, ind_localizations)
-  }
-  smoothed_loc <- smoothed_loc %>% arrange(id, time)
-  return(smoothed_loc)
-}
-
-
-smoothed_global_interaction <- smoothing_localization(global_interaction, global_localization)
-
-## Transform to list object
-global_localization <- lapply(1:n_subdivisions, function(t) {
-  localization_t <- smoothed_global_interaction %>% filter(time == t) %>% arrange(id)
-  return(localization_t)
-})
-
-rm(smoothed_global_interaction)
+# # Function to smooth individual trajectories
+# smoothing_location <- function(global_interaction, global_location) {
+#   interactions <- do.call("rbind", global_interaction)
+#   locations <- do.call("rbind", global_location)
+#   smoothed_loc <- data.frame()
+#   
+#   interactions_long <- interactions %>%
+#     pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>%
+#     arrange(individual, time)
+# 
+#   for (ind in unique(interactions_long$individual)) {
+#     ind_interactions <- interactions_long %>% filter(individual == ind) %>% arrange(time)
+#     ind_locations <- locations %>% filter(id == ind)
+#     
+#     if (nrow(ind_interactions) > 2) {
+#       for (i in 2:nrow(ind_interactions)) {
+#         time_gap <- ind_interactions$time[i] - ind_interactions$time[i - 1]
+#         
+#         if (time_gap == 2){
+#           previous_loc <- ind_locations %>% filter(time == ind_interactions$time[i - 1]) %>% pull(location)
+#           current_loc <- ind_locations %>% filter(time == ind_interactions$time[i]) %>% pull(location)
+#           if (previous_loc == current_loc & current_loc %in% id_room_patient){
+#             ind_locations$location[ind_locations$time == ind_interactions$time[i] - 1] <- current_loc
+#             }
+#         }
+#         if (time_gap > 2 & time_gap <= 10) {
+#           previous_loc <- ind_locations %>% filter(time == ind_interactions$time[i - 1]) %>% pull(location)
+#           current_loc <- ind_locations %>% filter(time == ind_interactions$time[i]) %>% pull(location)
+#           if (previous_loc == current_loc & current_loc %in% id_room_patient){
+#             for (t in (ind_interactions$time[i - 1] + 1):(ind_interactions$time[i] - 1)) {
+#             ind_locations$location[ind_locations$time == t] <- current_loc
+#             }
+#           }
+#         }
+#       }
+#     }
+#     smoothed_loc <- rbind(smoothed_loc, ind_locations)
+#   }
+#   smoothed_loc <- smoothed_loc %>% arrange(id, time)
+#   return(smoothed_loc)
+# }
+# 
+# 
+# smoothed_global_interaction <- smoothing_location(global_interaction, global_location)
+# 
+# ## Transform to list object
+# global_location <- lapply(1:n_subdivisions, function(t) {
+#   location_t <- smoothed_global_interaction %>% filter(time == t) %>% arrange(id)
+#   return(location_t)
+# })
+# 
+# rm(smoothed_global_interaction)
 ```
 
 ## SMOOTHING (ADDING CORRIDOR BEFORE AN INTERACTION)
 ```{r}
-smoothing_corridor <- function(global_interaction, global_localization) {
-  interactions <- do.call(rbind, global_interaction)
-  localizations <- do.call(rbind, global_localization)
-  smoothed_corridor <- data.frame()
-  
-  interactions_long <- interactions %>%
-    pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>%
-    arrange(individual, time)
-  id_corridor <- rooms[rooms$room == "Corridor", "id_room"]
-
-  for (ind in unique(interactions_long$individual)) {
-    ind_interactions <- interactions_long %>% filter(individual == ind) %>% arrange(time)
-    ind_localizations <- localizations %>% filter(id == ind)
-    
-    if (nrow(ind_interactions) > 2) {
-      for (i in 2:nrow(ind_interactions)) {
-        time_gap <- ind_interactions$time[i] - ind_interactions$time[i - 1]
-        
-        if (time_gap == 2){
-          ind_localizations[ind_localizations$time == ind_interactions$time[i] - 1, "localization"] <- id_corridor
-        }
-        if (time_gap > 2) {
-          ind_localizations[ind_localizations$time == ind_interactions$time[i - 1] + 1, "localization"] <- id_corridor
-          ind_localizations[ind_localizations$time == ind_interactions$time[i] - 1, "localization"] <- id_corridor
-        }
-      }
-    }
-    smoothed_corridor <- rbind(smoothed_corridor, ind_localizations)
-  }
-  smoothed_corridor <- smoothed_corridor %>% arrange(id, time)
-  return(smoothed_corridor)
-}
-
-smoothed_corridor_global_interaction <- smoothing_corridor(global_interaction, global_localization)
-
-## DF TO LIST
-global_localization <- lapply(1:n_subdivisions, function(t) {
-  localization_t <- smoothed_corridor_global_interaction %>% filter(time == t) %>% arrange(id)
-  return(localization_t)
-})
-
-rm(smoothed_corridor_global_interaction)
+# smoothing_corridor <- function(global_interaction, global_location) {
+#   interactions <- do.call(rbind, global_interaction)
+#   locations <- do.call(rbind, global_location)
+#   smoothed_corridor <- data.frame()
+#   
+#   interactions_long <- interactions %>%
+#     pivot_longer(cols = c(from, to), names_to = "direction", values_to = "individual") %>%
+#     arrange(individual, time)
+#   id_corridor <- rooms[rooms$room == "Corridor", "id_room"]
+# 
+#   for (ind in unique(interactions_long$individual)) {
+#     ind_interactions <- interactions_long %>% filter(individual == ind) %>% arrange(time)
+#     ind_locations <- locations %>% filter(id == ind)
+#     
+#     if (nrow(ind_interactions) > 2) {
+#       for (i in 2:nrow(ind_interactions)) {
+#         time_gap <- ind_interactions$time[i] - ind_interactions$time[i - 1]
+#         
+#         if (time_gap == 2){
+#           ind_locations[ind_locations$time == ind_interactions$time[i] - 1, "location"] <- id_corridor
+#         }
+#         if (time_gap > 2) {
+#           ind_locations[ind_locations$time == ind_interactions$time[i - 1] + 1, "location"] <- id_corridor
+#           ind_locations[ind_locations$time == ind_interactions$time[i] - 1, "location"] <- id_corridor
+#         }
+#       }
+#     }
+#     smoothed_corridor <- rbind(smoothed_corridor, ind_locations)
+#   }
+#   smoothed_corridor <- smoothed_corridor %>% arrange(id, time)
+#   return(smoothed_corridor)
+# }
+# 
+# smoothed_corridor_global_interaction <- smoothing_corridor(global_interaction, global_location)
+# 
+# ## DF TO LIST
+# global_location <- lapply(1:n_subdivisions, function(t) {
+#   location_t <- smoothed_corridor_global_interaction %>% filter(time == t) %>% arrange(id)
+#   return(location_t)
+# })
+# 
+# rm(smoothed_corridor_global_interaction)
 ```
 
-
-## FILL LOCALIZATION FOR PATIENTS
+## FILL location FOR PATIENTS
 ```{r}
-global_localization <- lapply(1:n_subdivisions, function(t) {
-  localization_t <- global_localization[[t]]
-  for (ind in id_patient) {
-    if (is.na(localization_t[localization_t$id == ind, "localization"])) {
-      localization_t[localization_t$id == ind, "localization"] <- rooms[rooms$id == ind, "id_room"]
-    }
-  }
-  
-  return(localization_t)
-})
+# global_location <- lapply(1:n_subdivisions, function(t) {
+#   location_t <- global_location[[t]]
+#   for (ind in id_patient) {
+#     if (is.na(location_t[location_t$id == ind, "location"])) {
+#       location_t[location_t$id == ind, "location"] <- rooms[rooms$id == ind, "id_room"]
+#     }
+#   }
+#   
+#   return(location_t)
+# })
 ```
 
-
-## localization INFERENCE - NO INTERACTION (PATIENTS STAY IN THEIR ROOM, SO WE ONLY CHECK/FILL HCW)
+## location INFERENCE - NO INTERACTION (PATIENTS STAY IN THEIR ROOM, SO WE ONLY CHECK/FILL HCW)
 ```{r Loc t1}
-################################################################
-## ASSIGNING localization FOR THE INDIVIDUALS NOT INTERACTING ##
-################################################################
-
-############
-## t == 1 ##
-############
-
-# FIRST SUBDIVISION 
-## RULES TO BE DEFINED
-## IF NOT INTERACTING AT t == 1, assign localization to -1 (NOT HERE)
-global_localization[[1]]$localization <- ifelse(is.na(global_localization[[1]]$localization), -1, global_localization[[1]]$localization )
+# ################################################################
+# ## ASSIGNING location FOR THE INDIVIDUALS NOT INTERACTING ##
+# ################################################################
+# 
+# ############
+# ## t == 1 ##
+# ############
+# 
+# # FIRST SUBDIVISION 
+# ## RULES TO BE DEFINED
+# ## IF NOT INTERACTING AT t == 1, assign location to -1 (NOT HERE)
+# global_location[[1]]$location <- ifelse(is.na(global_location[[1]]$location), -1, global_location[[1]]$location )
 ```
-
 
 ```{r Loc t2}
-############
-## t == 2 ##
-############
-
-## SECOND SUBDIVISION
-localization_t1 <- global_localization[[1]]
-localization_t2 <- global_localization[[2]]
-
-id_not_interacting_t2 <- localization_t2 %>% filter(is.na(localization)) %>% pull(id)
-id_room_t1 <- localization_t1 %>% filter(localization %in% id_room_patient) %>% pull(id)
-id_corridor_t1 <- localization_t1 %>% filter(localization == rooms[rooms$id == "ALL", "id_room"]) %>% pull(id)
-id_medical_restroom_t1 <- localization_t1 %>% filter(localization == rooms[rooms$id == "R-M-PE", "id_room"]) %>% pull(id)
-id_paramedical_restroom_t1 <- localization_t1 %>% filter(localization == rooms[rooms$id == "R-PM-PE", "id_room"]) %>% pull(id)
-id_nursing_station_t1 <- localization_t1 %>% filter(localization == rooms[rooms$id == "PM-PE", "id_room"]) %>% pull(id)
-id_office_t1 <- localization_t1 %>% filter(localization == rooms[rooms$id == "M-PE", "id_room"]) %>% pull(id)
-id_not_here_t1 <- localization_t1 %>% filter(localization == -1 ) %>% pull(id)
-
-
-for (individual in id_not_interacting_t2){
-  if (individual %in% id_paramedical){
-    ind_loc_t2 <- case_when(
-      individual %in% id_room_t1 ~ rooms[rooms$id == "ALL", "id_room"],
-      individual %in% id_nursing_station_t1 ~ rooms[rooms$id == "ALL", "id_room"],
-      individual %in% id_paramedical_restroom_t1 ~ rooms[rooms$id == "R-PM-PE", "id_room"],
-      individual %in% id_corridor_t1 ~ rooms[rooms$id == "R-PM-PE", "id_room"],
-      individual %in% id_not_here_t1 ~ -1,
-      .default = -2 #"ERROR - WRONG LOC MED t2"
-    )
-  } else if (individual %in% id_medical){
-    ind_loc_t2 <- case_when(
-      individual %in% id_room_t1 ~ rooms[rooms$id == "ALL", "id_room"],
-      individual %in% id_nursing_station_t1 ~ rooms[rooms$id == "ALL", "id_room"],
-      individual %in% id_office_t1 ~ rooms[rooms$id == "ALL", "id_room"],
-      individual %in% id_medical_restroom_t1 ~ rooms[rooms$id == "R-M-PE", "id_room"],
-      individual %in% id_corridor_t1 ~ rooms[rooms$id == "R-M-PE", "id_room"],
-      individual %in% id_not_here_t1 ~ -1,
-      .default = -3 #"ERROR - WRONG LOC MED t2"
-    )
-  } else {
-    ind_loc_t2 <- -4 #"ERROR - ID NOT IN MED/PARAMED"
-  }
-  ## ASSIGN THE localization OF THE INDIVIDUAL AT t==2
-  localization_t2[localization_t2$id == individual, "localization"] <- ind_loc_t2
-}
-
-## CHANGE THE GLOBAL localization DATAFRAME AT t==2
-global_localization[[2]]$localization <- localization_t2$localization
-    
-rm(localization_t1,
-   localization_t2,
-   id_not_interacting_t2,
-   id_room_t1,
-   id_corridor_t1,
-   id_not_here_t1,
-   id_medical_restroom_t1,
-   id_paramedical_restroom_t1,
-   id_nursing_station_t1,
-   id_office_t1,
-   ind_loc_t2)
+# ############
+# ## t == 2 ##
+# ############
+# 
+# ## SECOND SUBDIVISION
+# location_t1 <- global_location[[1]]
+# location_t2 <- global_location[[2]]
+# 
+# id_not_interacting_t2 <- location_t2 %>% filter(is.na(location)) %>% pull(id)
+# id_room_t1 <- location_t1 %>% filter(location %in% id_room_patient) %>% pull(id)
+# id_corridor_t1 <- location_t1 %>% filter(location == rooms[rooms$id == "ALL", "id_room"]) %>% pull(id)
+# id_medical_restroom_t1 <- location_t1 %>% filter(location == rooms[rooms$id == "R-M-PE", "id_room"]) %>% pull(id)
+# id_paramedical_restroom_t1 <- location_t1 %>% filter(location == rooms[rooms$id == "R-PM-PE", "id_room"]) %>% pull(id)
+# id_nursing_station_t1 <- location_t1 %>% filter(location == rooms[rooms$id == "PM-PE", "id_room"]) %>% pull(id)
+# id_office_t1 <- location_t1 %>% filter(location == rooms[rooms$id == "M-PE", "id_room"]) %>% pull(id)
+# id_not_here_t1 <- location_t1 %>% filter(location == -1 ) %>% pull(id)
+# 
+# 
+# for (individual in id_not_interacting_t2){
+#   if (individual %in% id_paramedical){
+#     ind_loc_t2 <- case_when(
+#       individual %in% id_room_t1 ~ rooms[rooms$id == "ALL", "id_room"],
+#       individual %in% id_nursing_station_t1 ~ rooms[rooms$id == "ALL", "id_room"],
+#       individual %in% id_paramedical_restroom_t1 ~ rooms[rooms$id == "R-PM-PE", "id_room"],
+#       individual %in% id_corridor_t1 ~ rooms[rooms$id == "R-PM-PE", "id_room"],
+#       individual %in% id_not_here_t1 ~ -1,
+#       .default = -2 #"ERROR - WRONG LOC MED t2"
+#     )
+#   } else if (individual %in% id_medical){
+#     ind_loc_t2 <- case_when(
+#       individual %in% id_room_t1 ~ rooms[rooms$id == "ALL", "id_room"],
+#       individual %in% id_nursing_station_t1 ~ rooms[rooms$id == "ALL", "id_room"],
+#       individual %in% id_office_t1 ~ rooms[rooms$id == "ALL", "id_room"],
+#       individual %in% id_medical_restroom_t1 ~ rooms[rooms$id == "R-M-PE", "id_room"],
+#       individual %in% id_corridor_t1 ~ rooms[rooms$id == "R-M-PE", "id_room"],
+#       individual %in% id_not_here_t1 ~ -1,
+#       .default = -3 #"ERROR - WRONG LOC MED t2"
+#     )
+#   } else {
+#     ind_loc_t2 <- -4 #"ERROR - ID NOT IN MED/PARAMED"
+#   }
+#   ## ASSIGN THE location OF THE INDIVIDUAL AT t==2
+#   location_t2[location_t2$id == individual, "location"] <- ind_loc_t2
+# }
+# 
+# ## CHANGE THE GLOBAL location DATAFRAME AT t==2
+# global_location[[2]]$location <- location_t2$location
+#     
+# rm(location_t1,
+#    location_t2,
+#    id_not_interacting_t2,
+#    id_room_t1,
+#    id_corridor_t1,
+#    id_not_here_t1,
+#    id_medical_restroom_t1,
+#    id_paramedical_restroom_t1,
+#    id_nursing_station_t1,
+#    id_office_t1,
+#    ind_loc_t2)
 
 ```
-
 
 ```{r Loc tsup2}
-############
-## t > 2 ###
-############
-for (t in 3:n_subdivisions){
-  localization_t <- global_localization[[t]]
-  localization_tm1 <- global_localization[[t-1]]
-  
-  id_not_interacting_t <- localization_t %>% filter(is.na(localization)) %>% pull(id)
-  
-  id_room_tm1 <- localization_tm1 %>% filter(localization %in% id_room_patient) %>% pull(id)
-  id_corridor_tm1 <- localization_tm1 %>% filter(localization == rooms[rooms$id == "ALL", "id_room"]) %>% pull(id)
-  id_office_tm1 <- localization_tm1 %>% filter(localization == rooms[rooms$id == "M-PE", "id_room"]) %>% pull(id)
-  id_medical_restroom_tm1 <- localization_tm1 %>% filter(localization == rooms[rooms$id == "R-M-PE", "id_room"]) %>% pull(id)
-  id_nursing_station_tm1 <- localization_tm1 %>% filter(localization == rooms[rooms$id == "PM-PE", "id_room"]) %>% pull(id)
-  id_paramedical_restroom_tm1 <- localization_tm1 %>% filter(localization == rooms[rooms$id == "R-PM-PE", "id_room"]) %>% pull(id)
-  
-  id_not_here_tm1 <- localization_tm1 %>% filter(localization == -1 ) %>% pull(id)
-  
-  ## ITERATE ON THE INDIVIDUALS NOT INTERACTING at time t
-  for (individual in id_not_interacting_t){
-    shifts_j <- shifts[shifts$individual == individual, ]
-    current_time <- begin_date + t * 30
-    in_shift <- any(current_time >= shifts_j$start_time & current_time <= shifts_j$end_time)
-    
-    if (in_shift) {
-      ## If the individual is within a shift
-      
-      if (individual %in% id_paramedical){
-        ind_loc_t <- case_when(
-          individual %in% id_room_tm1 ~ rooms[rooms$id == "ALL", "id_room"],
-          individual %in% id_nursing_station_tm1 ~ rooms[rooms$id == "ALL", "id_room"],
-          individual %in% id_paramedical_restroom_tm1 ~ rooms[rooms$id == "R-PM-PE", "id_room"],
-          individual %in% id_corridor_tm1 ~ rooms[rooms$id == "R-PM-PE", "id_room"],
-          individual %in% id_not_here_tm1 ~ -1,
-          .default = -5 #"ERROR - WRONG LOC PARAMED t>2"
-        )
-      } else if (individual %in% id_medical){
-        ind_loc_t <- case_when(
-          individual %in% id_room_tm1 ~ rooms[rooms$id == "ALL", "id_room"],
-          individual %in% id_nursing_station_tm1 ~ rooms[rooms$id == "ALL", "id_room"],
-          individual %in% id_office_tm1 ~ rooms[rooms$id == "ALL", "id_room"],
-          individual %in% id_medical_restroom_tm1 ~ rooms[rooms$id == "R-M-PE", "id_room"],
-          individual %in% id_corridor_tm1 ~ rooms[rooms$id == "R-M-PE", "id_room"],
-          individual %in% id_not_here_tm1 ~ -1,
-          .default = -6 #"ERROR - WRONG LOC MED t>2"
-        )
-      } else {
-        ind_loc_t <- -7 #"ERROR - ID NOT IN MED/PARAMED t>2"
-        }
-    } else {
-      ## If the individual is not within a shift
-      ind_loc_t <- -1 #"NOT HERE"
-    }
-    ## ASSIGN THE localization OF THE INDIVIDUAL AT t>2
-    localization_t[localization_t$id == individual, "localization"] <- ind_loc_t
-  }
-  
-  global_localization[[t]] <- localization_t
-}
+# ############
+# ## t > 2 ###
+# ############
+# for (t in 3:n_subdivisions){
+#   location_t <- global_location[[t]]
+#   location_tm1 <- global_location[[t-1]]
+#   
+#   id_not_interacting_t <- location_t %>% filter(is.na(location)) %>% pull(id)
+#   
+#   id_room_tm1 <- location_tm1 %>% filter(location %in% id_room_patient) %>% pull(id)
+#   id_corridor_tm1 <- location_tm1 %>% filter(location == rooms[rooms$id == "ALL", "id_room"]) %>% pull(id)
+#   id_office_tm1 <- location_tm1 %>% filter(location == rooms[rooms$id == "M-PE", "id_room"]) %>% pull(id)
+#   id_medical_restroom_tm1 <- location_tm1 %>% filter(location == rooms[rooms$id == "R-M-PE", "id_room"]) %>% pull(id)
+#   id_nursing_station_tm1 <- location_tm1 %>% filter(location == rooms[rooms$id == "PM-PE", "id_room"]) %>% pull(id)
+#   id_paramedical_restroom_tm1 <- location_tm1 %>% filter(location == rooms[rooms$id == "R-PM-PE", "id_room"]) %>% pull(id)
+#   
+#   id_not_here_tm1 <- location_tm1 %>% filter(location == -1 ) %>% pull(id)
+#   
+#   ## ITERATE ON THE INDIVIDUALS NOT INTERACTING at time t
+#   for (individual in id_not_interacting_t){
+#     shifts_j <- shifts[shifts$individual == individual, ]
+#     current_time <- begin_date + t * 30
+#     in_shift <- any(current_time >= shifts_j$start_time & current_time <= shifts_j$end_time)
+#     
+#     if (in_shift) {
+#       ## If the individual is within a shift
+#       
+#       if (individual %in% id_paramedical){
+#         ind_loc_t <- case_when(
+#           individual %in% id_room_tm1 ~ rooms[rooms$id == "ALL", "id_room"],
+#           individual %in% id_nursing_station_tm1 ~ rooms[rooms$id == "ALL", "id_room"],
+#           individual %in% id_paramedical_restroom_tm1 ~ rooms[rooms$id == "R-PM-PE", "id_room"],
+#           individual %in% id_corridor_tm1 ~ rooms[rooms$id == "R-PM-PE", "id_room"],
+#           individual %in% id_not_here_tm1 ~ -1,
+#           .default = -5 #"ERROR - WRONG LOC PARAMED t>2"
+#         )
+#       } else if (individual %in% id_medical){
+#         ind_loc_t <- case_when(
+#           individual %in% id_room_tm1 ~ rooms[rooms$id == "ALL", "id_room"],
+#           individual %in% id_nursing_station_tm1 ~ rooms[rooms$id == "ALL", "id_room"],
+#           individual %in% id_office_tm1 ~ rooms[rooms$id == "ALL", "id_room"],
+#           individual %in% id_medical_restroom_tm1 ~ rooms[rooms$id == "R-M-PE", "id_room"],
+#           individual %in% id_corridor_tm1 ~ rooms[rooms$id == "R-M-PE", "id_room"],
+#           individual %in% id_not_here_tm1 ~ -1,
+#           .default = -6 #"ERROR - WRONG LOC MED t>2"
+#         )
+#       } else {
+#         ind_loc_t <- -7 #"ERROR - ID NOT IN MED/PARAMED t>2"
+#         }
+#     } else {
+#       ## If the individual is not within a shift
+#       ind_loc_t <- -1 #"NOT HERE"
+#     }
+#     ## ASSIGN THE location OF THE INDIVIDUAL AT t>2
+#     location_t[location_t$id == individual, "location"] <- ind_loc_t
+#   }
+#   
+#   global_location[[t]] <- location_t
+# }
 ```
-
-
-## Save to an .RData file
-```{r Save to .RData}
-save(clusters,
-     global_localization,
-     global_interaction,
-     admission,
-     rooms,
-     shifts,
-     id_hcw,
-     id_patient,
-     begin_date,
-     end_date,
-     n_subdivisions,
-     file = file.path(loc_nodscov2_path, "localization-nodscov2.rda"))
-```
-
-
-
-
-
-
-
