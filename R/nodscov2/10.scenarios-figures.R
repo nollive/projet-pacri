@@ -1,36 +1,27 @@
----
-title: "scenario-figures"
-output: html_document
-date: "2024-09-19"
----
+################################################################################
+##
+##                  Figures of scenarios comparison
+##
+################################################################################
 
-```{r}
-#### LIBRARIES
-## Data management
+## Working environment----------------------------------------------------------
+## Libraries
 library(dplyr)
 library(tidyr)
 library(purrr)
 library(data.table)
 library(lubridate)
-## Plots
 library(ggplot2)
 library(cowplot)
 library(viridis)
 library(ggpubr)
 library(ggborderline)
+rm(list = ls())
 
 ## Suppporting functions, dictionaries and variables
 source("scenarios-figures-supp.R")
 source('scenarios-analysis_fun.R')
 
-## change langage to english for plots (uncomment English if using Windows)
-## WINDOWS
-# Sys.setlocale("LC_ALL", "English")
-## LINUX
-Sys.setlocale("LC_ALL", "en_US.UTF-8")
-```
-
-```{r}
 ##PATHS
 loc_path <- file.path('..','..', 'out','loc-nodscov2')
 scenarios_path <- file.path('..','..', 'out', 'scenarios-analysis')
@@ -45,19 +36,14 @@ id_hcw <- admission_sim %>% filter(info == 1) %>% distinct(id) %>% pull()
 ## FOR MEDICAL/PARAMEDICAL WE USE ADMISSION (INDIVIDUALS BEFORE ADDING NEW PATIENTS)
 id_paramedical <- admission %>% filter(cat %in% cat_paramedical) %>% distinct(id) %>% pull()
 id_medical <- admission %>% filter(cat %in% cat_medical) %>% distinct(id) %>% pull()
-```
-
 
 ## ADJUST THE BEGIN/END DATES OF SIMULATIONS
-```{r}
 # new_begin_date <- begin_date + t_begin*30 ## OFFSET TO START THE DAY AT 12AM
 # new_end_date <- new_begin_date + new_n_subdivisions*30
 # print(new_end_date - new_begin_date)
-```
 
 
-#### WHEN COUPLES ARE SELECTED
-```{r}
+#### WHEN COUPLES ARE SELECTED--------------------------------------------------
 all_metrics <- read.csv2(file = file.path(scenarios_path, 'scenarios-all_metrics.csv'))
 couple_same_SAR <- all_metrics %>% filter(dplyr::between(Global_median, 0.20, 0.30)) %>% pull(couple)
 
@@ -96,66 +82,59 @@ n_ext <- df_SAR %>% group_by(couple) %>% filter(Global == 0) %>% summarise(n = n
 
 
 df_SAR_long <- df_SAR %>%
-    pivot_longer(cols = c("Global", "HCW", "Patient", "Paramedical", "Medical", "Environment", "Contact" , 
-                           "Patient_Contact", "Patient_Environment", "Paramedical_Contact", "Paramedical_Environment",
-                          "Medical_Contact", "Medical_Environment"), names_to = "Type_SAR", values_to = "SAR")
+  pivot_longer(cols = c("Global", "HCW", "Patient", "Paramedical", "Medical", "Environment", "Contact" , 
+                        "Patient_Contact", "Patient_Environment", "Paramedical_Contact", "Paramedical_Environment",
+                        "Medical_Contact", "Medical_Environment"), names_to = "Type_SAR", values_to = "SAR")
 df_SAR_long$Type_SAR <- factor(df_SAR_long$Type_SAR, levels = c("Global", "HCW", "Patient", "Paramedical", "Medical", "Environment", "Contact",  "Patient_Contact", "Patient_Environment", "Paramedical_Contact", "Paramedical_Environment", "Medical_Contact", "Medical_Environment"))
 
 selected_couples <- c(paste(rep('sim', 5), c('1-4_20', '1-2_16', '3-4_12', '1_8', '3-2_5'), sep = '_'))
 selected_df <-  df_SAR_long %>% filter(couple %in% selected_couples) 
 selected_df$couple <- factor(selected_df$couple, levels = selected_couples)
-```
 
-```{r}
-## t TEST/ Wilcoxon test (significative difference between SAR contact/env)
 
+## t TEST/ Wilcoxon test (significative difference between SAR contact/env)-----
 for (id_couple in selected_couples){
   print(id_couple)
   
   print(t.test(x = df_SAR %>% filter(couple == id_couple) %>% pull(Contact),
-         y = df_SAR %>% filter(couple == id_couple) %>% pull(Environment),
-         paired = T))
+               y = df_SAR %>% filter(couple == id_couple) %>% pull(Environment),
+               paired = T))
   
   print(wilcox.test(x = df_SAR %>% filter(couple == id_couple) %>% pull(Contact),
-         y = df_SAR %>% filter(couple == id_couple) %>% pull(Environment),
-         paired = T))
+                    y = df_SAR %>% filter(couple == id_couple) %>% pull(Environment),
+                    paired = T))
   
 }
-```
 
-
-## PLOTS
-```{r}
+## PLOTS------------------------------------------------------------------------
 p_all_c <- df_SAR_long %>%
   ggplot( aes(x=couple, y=SAR, fill=couple)) +
-    geom_boxplot() +
-    geom_jitter(color="black", size=0.4, alpha=0.9) +
-    ggh4x::facet_grid2(cols = vars(Type_SAR), scales = "free_y", independent  ="y") +
-    theme_bw() +
-    theme(
-      legend.position="none",
-      plot.title = element_text(size=11),
-      axis.text.x = element_text(angle = 35, hjust = 1)
-    )
-  
- p_selected_c <- selected_df %>%
+  geom_boxplot() +
+  geom_jitter(color="black", size=0.4, alpha=0.9) +
+  ggh4x::facet_grid2(cols = vars(Type_SAR), scales = "free_y", independent  ="y") +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    plot.title = element_text(size=11),
+    axis.text.x = element_text(angle = 35, hjust = 1)
+  )
+
+p_selected_c <- selected_df %>%
   ggplot( aes(x=couple, y=SAR, fill=couple)) +
-    geom_boxplot() +
-    geom_jitter(color="black", size=0.4, alpha=0.9) +
-    ggh4x::facet_grid2(cols = vars(Type_SAR), scales = "free_y", independent  ="y") +
-    theme_bw() +
-    theme(
-      legend.position="none",
-      plot.title = element_text(size=11),
-      axis.text.x = element_text(angle = 35, hjust = 1)
-    )
+  geom_boxplot() +
+  geom_jitter(color="black", size=0.4, alpha=0.9) +
+  ggh4x::facet_grid2(cols = vars(Type_SAR), scales = "free_y", independent  ="y") +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    plot.title = element_text(size=11),
+    axis.text.x = element_text(angle = 35, hjust = 1)
+  )
 
 print(p_all_c)
 print(p_selected_c)
-```
 
-## FINAL PLOTS - CONTRIBUTION
-```{r}
+## FINAL PLOTS - CONTRIBUTION---------------------------------------------------
 selected_df <- selected_df %>%
   mutate(scenario = recode(couple, !!!dict_scenarios))
 selected_df$scenario <- factor(selected_df$scenario, levels = c(paste0(rep('Scenario ',5), 1:5)))
@@ -163,14 +142,14 @@ selected_df$scenario <- factor(selected_df$scenario, levels = c(paste0(rep('Scen
 p1 = selected_df %>%
   filter(Type_SAR %in% c("Contact", "Environment")) %>%
   ggplot( aes(x=scenario, y=SAR, col = Type_SAR)) +
-    geom_boxplot(position = position_dodge(width = 0.8), width = 0.5) +
-    geom_jitter(size=0.4, alpha=0.9, position = position_jitterdodge()) +
-    scale_color_manual(values = env_pal) +
-    theme_bw() +
-    theme(
-      #axis.text.x = element_text(angle = 35, hjust = 1),
-      plot.title = element_text(size=11)
-    ) + 
+  geom_boxplot(position = position_dodge(width = 0.8), width = 0.5) +
+  geom_jitter(size=0.4, alpha=0.9, position = position_jitterdodge()) +
+  scale_color_manual(values = env_pal) +
+  theme_bw() +
+  theme(
+    #axis.text.x = element_text(angle = 35, hjust = 1),
+    plot.title = element_text(size=11)
+  ) + 
   labs(x = "", col = "")
 
 
@@ -178,15 +157,15 @@ p2 = selected_df %>%
   filter(Type_SAR %in% c("Patient", "Paramedical", "Medical")) %>%
   mutate(Type_SAR = factor(Type_SAR, c("Paramedical", "Medical", "Patient"))) %>%
   ggplot( aes(x=scenario, y=SAR, col = Type_SAR)) +
-    geom_boxplot(position = position_dodge(width = 0.8), width = 0.5) +
-    geom_jitter(size=0.4, alpha=0.9, position = position_jitterdodge()) +
-    scale_color_manual(values = pal[1:3]) +
-    theme_bw() +
-    theme(
-      #axis.text.x = element_text(angle = 35, hjust = 1),
-      plot.title = element_text(size=11)
-      
-    ) + 
+  geom_boxplot(position = position_dodge(width = 0.8), width = 0.5) +
+  geom_jitter(size=0.4, alpha=0.9, position = position_jitterdodge()) +
+  scale_color_manual(values = pal[1:3]) +
+  theme_bw() +
+  theme(
+    #axis.text.x = element_text(angle = 35, hjust = 1),
+    plot.title = element_text(size=11)
+    
+  ) + 
   labs(x = "", col = "") 
 
 
@@ -241,12 +220,7 @@ p_contrib <- ggarrange(p1, p2, p3, p4, labels = c("A", "B", "C", "D"), nrow = 2,
 ggsave(filename = file.path(scenarios_path, 'fig', 'scenario-contribution.png'), plot = p_contrib, height = 7, width = 14)
 
 
-
-```
-
-
-# Plots of epidemic duration 
-```{r}
+## Plots of epidemic duration---------------------------------------------------
 # Plot
 epi_durations = do.call(
   "rbind", 
@@ -266,10 +240,6 @@ ggplot(epi_durations, aes(x = scenario, y = duration)) +
 epi_durations_aov = aov(duration ~ scenario, data = epi_durations)
 summary(epi_durations_aov) # No significant difference
 
-```
-
-
-```{r}
 # Get contributions
 selected_scenarios_output = list_sim[selected_couples]
 all_info = data.frame()
@@ -281,14 +251,13 @@ for (i in seq_along(selected_scenarios_output)) {
                                 j))
   }
 }
-  
 
 # Plot contributions
 relative_contribution = all_info %>%
   mutate(
     scenario = recode(couple, !!!dict_scenarios),
     r_c = ifelse(ninf_c+ninf_e == 0, 0, ninf_c/(ninf_c + ninf_e)*100) 
-    ) 
+  ) 
 
 ggplot(relative_contribution, aes(x = scenario, y = r_c)) +
   geom_boxplot() +
@@ -344,11 +313,7 @@ all_info %>%
 epidemic_duration_aov = aov(epidemic_duration ~ couple, data = all_info)
 summary(epidemic_duration_aov) # No significant difference
 
-```
 
-
-
-```{r}
 all_SAR_metrics <- compute_all_SAR_metrics(list_SAR = list_SAR)
 list_gs_df <- list()
 for(couple in selected_couples){
@@ -376,7 +341,7 @@ test = df_status %>%
   group_by(couple, id_sim, date, type_ind) %>%
   summarise(n = n(), .groups = "drop") %>%
   complete(couple, id_sim, date, type_ind, fill = list(n = 0))
-  
+
 test <- test%>%
   mutate(scenario = case_when(
     couple == 'sim_1-4_20'~ 'Scenario 1',
@@ -399,8 +364,8 @@ p_seir <- test %>%
   facet_grid(cols = vars(scenario), rows = vars(type_ind)) +
   scale_x_date(date_labels = "%b/%d") +
   labs(
-       x = 'Time',
-       y = 'Infectious individuals') +
+    x = 'Time',
+    y = 'Infectious individuals') +
   theme_bw()
 
 print(p_seir)
@@ -450,18 +415,14 @@ p_seir_global <- test_global %>%
   facet_grid(cols = vars(scenario)) +
   scale_x_date(date_labels = "%b/%d") +
   labs(
-       x = 'Time',
-       y = 'Infectious individuals') +
+    x = 'Time',
+    y = 'Infectious individuals') +
   theme_bw()
 
 print(p_seir_global)
 ggsave(filename = file.path(scenarios_path, 'fig', 'seir-global-scenario.png'), plot = p_seir_global, width = 9, height = 3)
-```
 
 
-
-
-```{r}
 ### x = beta < 4
 ggplot(all_metrics %>% filter(beta < 4), aes(x = beta, y = Global_median, color = as.factor(nu), group = nu)) +
   geom_line() +
@@ -505,11 +466,11 @@ p_grid <- ggplot(all_metrics , aes(x = beta, y = Global_median, color = as.facto
        color = 'Nu') +
   theme_bw() + 
   theme(plot.title = element_text(size = 20, hjust = 0.5),
-          axis.text = element_text(size = 16),
-          axis.title = element_text(size = 20),
-          # axis.text.x = element_text(angle = 45, hjust = 1),
-          legend.text = element_text(size = 18),
-          legend.title = element_text(size = 20))
+        axis.text = element_text(size = 16),
+        axis.title = element_text(size = 20),
+        # axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.text = element_text(size = 18),
+        legend.title = element_text(size = 20))
 
 print(p_grid)
 ggsave(filename = file.path(scenarios_path, 'fig', 'grid-search.png'), plot = p_grid, width = 21, height = 7)
@@ -524,10 +485,7 @@ ggplot(all_metrics, aes(x = beta, y = nu, fill = Global_median)) +
        fill = "SAR Median") +
   theme_minimal()
 
-```
-
 ## SEIR PLOTS 
-```{r}
 couple = 'sim_3-4_12'
 list_SEIR <- get_all_SEIR(list_sim, n_subdivisions = new_n_subdivisions)
 
@@ -536,10 +494,8 @@ all_SEIR_metrics <- get_all_SEIR_metrics(list_SEIR = list_SEIR)
 #Temp
 begin_date <- new_begin_date
 plot_SEIR_n(couple = couple, list_SEIR = list_SEIR, all_SEIR_metrics = all_SEIR_metrics)
-```
 
 ## VARIABILITY BETWEEN SIMULATION - SEIR, ED, SAR FOR BASELINE
-```{r}
 ## Baseline scenario SEIR with epidemic duration and SAR
 scenario <- 'sim_3-4_12'
 sar_scenario <- df_SAR_long %>% filter(couple == scenario) %>% filter(Type_SAR == 'Global')
@@ -548,40 +504,39 @@ list_sim_scenario <- list()
 list_sim_scenario[[scenario]] <-  list_sim[[scenario]]
 list_SEIR_scenario <- get_all_SEIR(list_sim_scenario, new_n_subdivisions)
 seir_metrics_scenario <- get_all_SEIR_metrics(list_SEIR_scenario)
-```
+
 
 ## VARIABILITY BETWEEN SIMULATION - PLOTS (2 jittered boxplots)
-```{r}
 SEIR_colors <- c("Susceptible" = "green", "Exposed" = "pink", "Infectious" = "red", "Recovered" = "blue")
-  n_sim <- length(list_SEIR_scenario[[scenario]])
-  title <- paste0('SEIR - ', couple)
-  counts_list <- list_SEIR_scenario[[scenario]]
-  couple_id <- couple
-  metrics_df <- seir_metrics_scenario %>% filter(couple == couple_id)
-  ## SEIR: NUMBER OF INDIVIDUAL
-  SEIR_n <- ggplot() + 
-    labs(x = "Time",
-         y = "Number of individuals",
-         # title = title,
-         color = "Status") +
-    scale_color_manual(values = SEIR_colors) +
-    theme_bw() +
-    theme(plot.title = element_text(size = 20, hjust = 0.5),
-          axis.text = element_text(size = 16),
-          axis.title = element_text(size = 18),
-          # axis.text.x = element_text(angle = 45, hjust = 1),
-          legend.text = element_text(size = 16),
-          legend.title = element_text(size = 18))
-  
-  for (i in 1:n_sim){
-    SEIR_n <- SEIR_n + 
-      geom_line(data = counts_list[[i]],
-                aes(x = time * 30 + new_begin_date, y = count, color = status),
-                alpha = 0.5,
-                linewidth = 0.3,
-                linetype = "solid")
-  }
-  
+n_sim <- length(list_SEIR_scenario[[scenario]])
+title <- paste0('SEIR - ', couple)
+counts_list <- list_SEIR_scenario[[scenario]]
+couple_id <- couple
+metrics_df <- seir_metrics_scenario %>% filter(couple == couple_id)
+## SEIR: NUMBER OF INDIVIDUAL
+SEIR_n <- ggplot() + 
+  labs(x = "Time",
+       y = "Number of individuals",
+       # title = title,
+       color = "Status") +
+  scale_color_manual(values = SEIR_colors) +
+  theme_bw() +
+  theme(plot.title = element_text(size = 20, hjust = 0.5),
+        axis.text = element_text(size = 16),
+        axis.title = element_text(size = 18),
+        # axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.text = element_text(size = 16),
+        legend.title = element_text(size = 18))
+
+for (i in 1:n_sim){
+  SEIR_n <- SEIR_n + 
+    geom_line(data = counts_list[[i]],
+              aes(x = time * 30 + new_begin_date, y = count, color = status),
+              alpha = 0.5,
+              linewidth = 0.3,
+              linetype = "solid")
+}
+
 # SEIR
 p1 <- SEIR_n +
   geom_borderline(data = metrics_df,
@@ -631,11 +586,9 @@ p3 <- ggplot(epidemic_duration, aes(x = "", y = duration, fill = "Epidemic Durat
 # p_scenario <- plot_grid(p1, p2, p3, labels = c("A", "B", "C"), ncol = 3, rel_widths = c(3, 0.5, 0.5))
 p_scenario <- plot_grid(p2, p3, p1, labels = c("A", "B", "C"), ncol = 3, rel_widths = c(0.5, 0.5, 3))
 ggsave(filename = file.path(scenarios_path, 'fig', 'seir-sar-ed-scenario-3.png'), plot = p_scenario, height = 7, width = 21)
-```
 
 
 ## VARIABILITY BETWEEN SIMULATION - PLOTS (2 hstograms)
-```{r}
 # SAR plot
 p2bis <- ggplot(sar_scenario, aes(x = SAR)) +
   geom_histogram(aes(y = after_stat(density)), binwidth = 0.01, color = "grey", fill = "lightblue") +
@@ -660,26 +613,3 @@ final_plot <- plot_grid(p2bis, p3bis, p1, labels = c("A", "B", "C"), ncol = 3, r
 ggsave(filename = file.path(scenarios_path, 'fig', 'final_plot.png'), plot = final_plot, height = 7, width = 21)
 
 print(final_plot)
-
-```
-
-
-<!-- ## SEIR -->
-<!-- ```{r} -->
-<!-- id_global <- global_status %>% distinct(id) %>% pull() -->
-<!-- n_individual <- length(id_global) -->
-<!-- n_subdivisions <- new_n_subdivisions -->
-
-<!-- list_SEIR <- get_all_SEIR(list_sim = list_sim, n_subdivisions = n_subdivisions) -->
-
-<!-- list_SEIR <- list() -->
-
-<!-- for(couple in names(list_sim)){ -->
-<!--   parts <- strsplit(couple, "_")[[1]] -->
-<!--   beta <- eval(parse(text = gsub(pattern = '-', replacement = '/', x = parts[2]))) -->
-<!--   nu <- eval(parse(text = gsub(pattern = '-', replacement = '/', x = parts[3]))) -->
-
-<!--   list_SEIR[[couple]] <- SEIR_to_list(sim_list = list_sim[[couple]], n_subdivisions = new_n_subdivisions, n_individual = n_individual) -->
-
-<!-- } -->
-<!-- ``` -->

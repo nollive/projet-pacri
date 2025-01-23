@@ -1,11 +1,11 @@
----
-title: "launch-simulation-example"
-output: html_document
-date: "2024-09-20"
----
-
-## Load libraries and functions
-```{r}
+################################################################################
+##
+##                  Generate input data for the simulation of 
+##                            epidemics in ICU wards
+##
+################################################################################
+  
+## Working environment-----------------------------------------------------------
 # Libraries
 library(Rcpp)
 library(tidyverse)
@@ -16,10 +16,8 @@ rm(list = ls())
 source("helper-functions-simulations.R")
 sourceCpp(file.path("..", "..", "cpp", "dev-model-nodscov2_fun.cpp"))
 sourceCpp(file.path("..", "..", "cpp", "dev-sensibility-analysis.cpp"))
-```
 
-## Prepare simulation
-```{r}
+## Prepare simulation-----------------------------------------------------------
 # Load data 
 load(file.path("..", "..", "out", "parameters-synthetic-data.rda"))
 
@@ -52,30 +50,24 @@ global_status <- global_status %>%
                          inf_by))
 
 sum(global_status$t_inf>0)
-```
 
-
-```{r}
 ## Conversion factor 
 cf = (24*60*2)
 
 ## Cumulative risk - Contact
-  # 1 day
-  1-exp(-beta_c/cf)^cf
-  # 5 days
-  1-exp(-beta_c/cf)^(5*cf)
+# 1 day
+1-exp(-beta_c/cf)^cf
+# 5 days
+1-exp(-beta_c/cf)^(5*cf)
 
 ## Cumulative risk - Environment - Room of 60 m3
-  # 1 day
-  1-exp(-(beta_e/cf)*(B/cf)/60*(nu/cf))^cf
-  # 5 days
-  1-exp(-(beta_e/cf)*(B/cf)/60*(nu/cf))^(5*cf)
-
-```
+# 1 day
+1-exp(-(beta_e/cf)*(B/cf)/60*(nu/cf))^cf
+# 5 days
+1-exp(-(beta_e/cf)*(B/cf)/60*(nu/cf))^(5*cf)
 
 
-```{r test}
-## SIMULATION USING RCPP
+## SIMULATION USING RCPP--------------------------------------------------------
 result <- simulation(global_interaction = global_interaction,
                      global_environment = global_environment,
                      global_data = global_data,
@@ -93,21 +85,21 @@ i = 1
 while(sum(result$t_inf > 1) < 10) {
   print(i)
   result <- simulation(global_interaction = global_interaction,
-                     global_environment = global_environment,
-                     global_data = global_data,
-                     global_status = global_status,
-                     beta_c = beta_c,
-                     beta_e = beta_e,
-                     B = B,
-                     nu = nu,
-                     mu = mu,
-                     env_model = env_model,
-                     dt = dt)
+                       global_environment = global_environment,
+                       global_data = global_data,
+                       global_status = global_status,
+                       beta_c = beta_c,
+                       beta_e = beta_e,
+                       B = B,
+                       nu = nu,
+                       mu = mu,
+                       env_model = env_model,
+                       dt = dt)
   print(paste0(i, " - ", sum(result$t_inf>1)))
   i = i+1
 }
 
-## Plot output
+## Plot output------------------------------------------------------------------
 summary(result)
 sum(result$t_inf>1) / (nrow(result)-1)
 
@@ -124,7 +116,7 @@ p2 = result %>%
     n_env = sum(grepl("ENVIRONMENT", inf_by)),
     p_contact = sum(grepl("CONTACT", inf_by)) / (n()-1),
     p_env = sum(grepl("ENVIRONMENT", inf_by)) / (n()-1)
-    ) %>%
+  ) %>%
   pivot_longer(cols = everything(), names_to = c("metric", "inf_source"), values_to = "value", names_pattern = "(.*)_(.*)") %>%
   mutate(metric = ifelse(metric == "n", "Count", "Proportion")) %>%
   ggplot(., aes(x = inf_source, y = value)) +
@@ -151,7 +143,7 @@ p4 = data.frame(
   value = c(sum(result$inf_room==22 & grepl("ENVIRONMENT", result$inf_by)), sum(result$inf_room<=17 & grepl("ENVIRONMENT", result$inf_by)),
             sum(result$inf_room==20 & grepl("ENVIRONMENT", result$inf_by)), sum(result$inf_room==21 & grepl("ENVIRONMENT", result$inf_by)),
             sum(result$inf_room==19 & grepl("ENVIRONMENT", result$inf_by)), sum(result$inf_room==18 & grepl("ENVIRONMENT", result$inf_by))
-            )
+  )
 ) %>%
   ggplot(., aes(x = inf_source, y = value)) +
   geom_bar(stat = "identity", width = 0.5) +
@@ -159,17 +151,12 @@ p4 = data.frame(
   theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 35, hjust = 1)) +
   labs(y = "Counts")
 
-  
+
 ggarrange(p1, 
           ggarrange(p2, p3, p4, ncol = 3, labels = c("B", "D", "E")), 
           nrow = 2, labels = c("A", ""))
 
-```
 
-
-
-<!-- ###### launch_sensibility.R (CLUSTER) ######  -->
-```{r}
 ###########
 ## PATHS ##
 ###########
@@ -202,10 +189,8 @@ test_environment <- rep(truncated_environment, n_days)
 test_data <- rep(truncated_data, n_days)
 test_status <- truncated_status
 new_n_subdivisions <- (t_end-t_begin +1)*n_days
-```
 
 
-```{r}
 #######################
 ## RANDOM INDEX CASE ##
 #######################
@@ -225,14 +210,9 @@ global_status <- global_status %>%
          inf_by = ifelse(id == id_index,
                          'INDEX',
                          inf_by))
-```
 
-
-
-
-<!-- ################################# SIMULATION (LOCAL) #################################  -->
+################################# SIMULATION (LOCAL) #################################  -->
 ## SINGLE SIMULATION (dev-model)
-```{r}
 cpp_path <- file.path('..', '..', 'cpp', 'nodscov2')
 sourceCpp(file.path(cpp_path, 'dev-model-nodscov2.cpp'))
 
@@ -253,19 +233,17 @@ sourceCpp(file.path(cpp_path, 'dev-model-nodscov2.cpp'))
 beta = 3/4
 nu = 12
 data_sim <- simulation(global_interaction = global_interaction,
-                     global_environment = global_environment,
-                     global_data = global_data,
-                     global_status = global_status,
-                     beta_c = beta_c,
-                     beta_e = beta_e,
-                     B = B,
-                     nu = nu,
-                     mu = mu,
-                     env_model = "linear",
-                     dt = dt)
-```
+                       global_environment = global_environment,
+                       global_data = global_data,
+                       global_status = global_status,
+                       beta_c = beta_c,
+                       beta_e = beta_e,
+                       B = B,
+                       nu = nu,
+                       mu = mu,
+                       env_model = "linear",
+                       dt = dt)
 
-```{r}
 args = commandArgs(trailingOnly=TRUE)
 id_sim <- ifelse(length(args)==0, "dev-test-endless-day", args[1])
 id_sim_path <- file.path(wd, '..', '..', 'out', 'sim-nodscov2' , id_sim)
@@ -288,7 +266,7 @@ save(admission,
      t_end,
      data_sim,
      file = file.path(scenarios_path, "scenario-3-unique-simulation-nodscov2.RData")
-     )
+)
 
 save(truncated_interaction,
      truncated_localization,
@@ -308,14 +286,9 @@ save(truncated_interaction,
      t_end,
      data_sim,
      file = file.path(id_sim_path, paste0(id_sim, "-", "unique-simulation-nodscov2.RData"))
-     )
-```
-
-
-
+)
 
 ## MULTIPLE SIMULATIONS (C/E/C+E)
-```{r}
 n_sim <- 1
 sourceCpp(file.path(cpp_path, 'dev-sensibility-analysis.cpp'))
 
@@ -359,11 +332,9 @@ sim_C_E <- replicate(n_sim, {
     mu = mu,
     dt = dt)
 }, simplify = FALSE)
-```
 
 
 ##SAVE .RDATA
-```{r}
 save_path <- file.path(id_sim_path, paste0(id_sim, "-", "multiple-simulation-nodscov2.RData"))
 save(sim_C,
      sim_E,
@@ -386,134 +357,17 @@ save(sim_C,
      new_end_date,
      file = save_path
 )
-```
 
 
-
-
-## BENCHMARK
-```{r}
+## BENCHMARK--------------------------------------------------------------------
 library(microbenchmark)
 a <- microbenchmark(simulation(global_interaction = test_interaction,
-                     global_environment = test_environment,
-                     global_data = test_data,
-                     global_status = test_status,
-                     beta = beta,
-                     B = B,
-                     nu = nu,
-                     mu = mu,
-                     dt = dt), times = 10)
-```
-
-
-
-
-<!-- ########################## -->
-<!-- ## SENSIBILITY ANALYSIS ## -->
-<!-- ########################## -->
-<!-- Simulation without the new admissions/discharges -->
-
-<!-- ```{r} -->
-<!-- ##PARAMETERS -->
-<!-- B <- 0.48 *24 # Breathing rate (0.48 m3/h) -->
-<!-- mu_air <- 4 * 24 # Quanta removal (4-6 Air changes/h) -->
-<!-- mu_inac <- (log(2)/1.1) * 24 # Quanta inactivation (computed with viral half life -> 0.63 quanta inactivated/h)  -->
-<!-- mu <- mu_air + mu_inac -->
-<!-- nu <- 10 * 24 # (10 quanta/h) -->
-<!-- dt <- 30 # Time step -->
-<!-- tau <- 60 * 60 *24 # Seconds in 1 day -->
-<!-- deltat <- dt/tau -->
-<!-- env_threshold <- 0 # Quanta threshold above which the environment is infectious -->
-
-<!-- # BETA -->
-<!-- p_PA_PA <- 2.3e-5 -->
-<!-- p_PA_PE <- 1.19e-4 -->
-<!-- p_PE_PA <- 7.89e-4 -->
-<!-- p_PE_PE <- 1.66e-4 -->
-<!-- #p <- median(c(p_PA_PA,p_PA_PE,p_PE_PA,p_PE_PE)) -->
-<!-- p <- mean(c(p_PA_PA,p_PA_PE,p_PE_PA,p_PE_PE)) -->
-<!-- beta <- (-log(1-p))*(86400/30) -->
-<!-- ``` -->
-
-<!-- ## SAVE ALL BETA CONFIGURATIONS -->
-<!-- ```{r} -->
-<!-- for (beta in seq(from = 0.5, to = 10, by = 0.5)){ -->
-<!--   parameters_path <- file.path(sensibility_path, paste0('sim-beta-', beta)) -->
-<!--   dir.create(file.path(parameters_path, 'results'), showWarnings = F, recursive = T) -->
-
-<!--   save(n_days, -->
-<!--        truncated_interaction, -->
-<!--        truncated_environment, -->
-<!--        truncated_data, -->
-<!--        truncated_status, -->
-<!--        admission_sim, -->
-<!--        beta, -->
-<!--        B, -->
-<!--        nu, -->
-<!--        mu, -->
-<!--        env_threshold, -->
-<!--        dt, -->
-<!--        t_begin, -->
-<!--        t_end, -->
-<!--        file = file.path(parameters_path, paste0('parameters-model-beta-', beta, '.RData')) -->
-<!--   ) -->
-<!-- } -->
-<!-- ``` -->
-
-<!-- ## MEDIAN BETA -->
-<!-- ```{r} -->
-<!-- beta <- 'median' -->
-
-<!-- parameters_path <- file.path(sensibility_path, paste0('sim-beta-', beta)) -->
-<!-- dir.create(file.path(parameters_path, 'results'), showWarnings = F, recursive = T) -->
-
-<!-- p_median <- median(c(p_PA_PA,p_PA_PE,p_PE_PA,p_PE_PE)) -->
-<!-- beta<- (-log(1-p_median))*(86400/30) ##SEC IN A DAY/30 SEC (30sec time-step) -->
-
-
-
-<!-- save(n_days, -->
-<!--      truncated_interaction, -->
-<!--      truncated_environment, -->
-<!--      truncated_data, -->
-<!--      truncated_status, -->
-<!--      admission_sim, -->
-<!--      beta, -->
-<!--      B, -->
-<!--      nu, -->
-<!--      mu, -->
-<!--      env_threshold, -->
-<!--      dt, -->
-<!--      t_begin, -->
-<!--      t_end, -->
-<!--      file = file.path(parameters_path, paste0('parameters-model-beta-median', '.RData')) -->
-<!-- ) -->
-<!-- ``` -->
-
-
-<!-- ## BETA MEAN -->
-<!-- ```{r} -->
-<!-- beta <- 'mean' -->
-<!-- parameters_path <- file.path(sensibility_path, paste0('sim-beta-', beta)) -->
-<!-- dir.create(file.path(parameters_path, 'results'), showWarnings = F, recursive = T) -->
-
-<!-- p_mean <- mean(c(p_PA_PA,p_PA_PE,p_PE_PA,p_PE_PE)) -->
-<!-- beta <- (-log(1-p_mean))*(86400/30) ##SEC IN A DAY/30 SEC (30sec time-step) -->
-
-<!-- save(n_days, -->
-<!--      truncated_interaction, -->
-<!--      truncated_environment, -->
-<!--      truncated_data, -->
-<!--      truncated_status, -->
-<!--      admission_sim, -->
-<!--      beta, -->
-<!--      B, -->
-<!--      nu, -->
-<!--      mu, -->
-<!--      env_threshold, -->
-<!--      dt, -->
-<!--      t_begin, -->
-<!--      t_end, -->
-<!--      file = file.path(parameters_path, paste0('parameters-model-beta-mean', '.RData')) -->
-<!-- ) -->
-<!-- ``` -->
+                               global_environment = test_environment,
+                               global_data = test_data,
+                               global_status = test_status,
+                               beta = beta,
+                               B = B,
+                               nu = nu,
+                               mu = mu,
+                               dt = dt), times = 10)
+  

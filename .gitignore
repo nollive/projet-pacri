@@ -32,6 +32,10 @@ data/data-synthetic-graphs/
 # Simulated data
 out/final-simulations/
 out/grid-search/
+out/parameters-synthetic*.rda
+
+# Old codes
+R/nodscov2/deprecated/
 
 # Codes with paths used on the cluster
 cluster/

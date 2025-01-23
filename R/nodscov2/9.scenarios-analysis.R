@@ -1,11 +1,10 @@
----
-title: "scenario-figures"
-output: html_document
-date: "2024-09-19"
----
-
-## Prepare working environment
-```{r}
+################################################################################
+##
+##                  Analysis of the simulated scenarios
+##
+################################################################################
+  
+## Working environment----------------------------------------------------------
 #### LIBRARIES
 library(tidyverse)
 library(cowplot)
@@ -26,10 +25,8 @@ source('helper-functions.R')
 out_path <- file.path('..','..', 'out')
 simulations_path <- file.path('..','..', 'out', 'final-simulations')
 fig_path <- file.path('..','..', 'fig', 'simulations')
-```
 
-## Load data 
-```{r}
+## Load data--------------------------------------------------------------------
 # LOAD DATA
 load(file.path(out_path, "parameters-synthetic-data.rda"))
 
@@ -38,10 +35,8 @@ id_patient <- admission$id[admission$cat == "Patient"]
 id_hcw <- admission$id[admission$cat != "Patient"]
 id_paramedical <- admission$id[admission$cat == "Paramedical"]
 id_medical <- admission$id[admission$cat == "Medical"]
-```
 
 ## Selected parameter pairs
-```{r}
 # Conditions to load
 conditions = c("sim_1-4_1-12000", "sim_3-4_1-18000", "sim_9-10_1-20000", "sim_5-4_1-40000", "sim_6-4_1-60000")
 dict_scenarios = paste("Scenario", 1:length(conditions))
@@ -82,10 +77,8 @@ all_SAR = read.csv2(file.path(simulations_path, "all_SAR.csv"))
 # rownames(all_durations) = NULL
 # write.csv2(all_durations, file.path(simulations_path, "all_durations.csv"), quote = F, row.names = F)
 all_durations = read.csv2(file.path(simulations_path, "all_durations.csv"))
-```
 
-## Plot probability of infection for the short-range transmission route 
-```{r}
+## Plot probability of infection for the short-range transmission route--------- 
 # Info 
 beta_c = c(1/4, 3/4, 9/10, 5/4, 6/4)
 scaling_factor = 30/(24*60*60)
@@ -99,7 +92,7 @@ p = expand.grid(b_c = beta_c, day = days) %>%
   mutate(
     p = 1-exp(-b_c*scaling_factor)^(day*24*60*2),
     scenario = recode(b_c, !!!dict_scenario_beta_c)
-    ) %>%
+  ) %>%
   ggplot(., aes(x = factor(day), y = p, col = scenario, group = scenario)) +
   geom_line() +
   scale_color_manual(values = brewer.pal(n = 5, name = "Set2")) +
@@ -107,11 +100,9 @@ p = expand.grid(b_c = beta_c, day = days) %>%
   theme(legend.title = element_blank()) +
   labs(y = "Probability of infection by contact after x days", x = "Exposure in days")
 ggsave(file.path(fig_path, "transmission_proba_contact.png"), p, height = 4, width = 5)
-```
 
-## Plots with all models
+## Plots with all models--------------------------------------------------------
 ### Plot SAR
-```{r}
 all_SAR = read.csv2(file.path(simulations_path, "all_SAR.csv"))
 dict_scenarios = c(
   "1-4_1-12000" = "Scenario 1",
@@ -137,8 +128,8 @@ all_SAR %>%
   theme_bw() + 
   theme(axis.title.x = element_blank(), legend.title = element_blank()) +
   labs(y = "Global secondary attack rate") #+
-  # stat_pvalue_manual(SAR_test, label = "p") +
-  # scale_y_continuous(expand = expansion(mult = c(0.05, 0.1)))
+# stat_pvalue_manual(SAR_test, label = "p") +
+# scale_y_continuous(expand = expansion(mult = c(0.05, 0.1)))
 
 ## Plot SAR by individual category
 all_SAR %>%
@@ -152,7 +143,7 @@ all_SAR %>%
   theme_bw() +
   theme(axis.title.x = element_blank(), legend.title = element_blank()) +
   labs(y = "Secondary attack rate by individual category")
-  
+
 ## Plot SAR by source of infection - Patients
 all_SAR %>%
   mutate(scenario = recode(paste0(beta_c, "_", beta_e), !!!dict_scenarios)) %>%
@@ -172,7 +163,7 @@ all_SAR %>%
   mutate(
     scenario = recode(paste0(beta_c, "_", beta_e), !!!dict_scenarios),
     ratio = Patient_Contact / Patient_Environment
-    ) %>%
+  ) %>%
   ggplot(., aes(x = scenario, y = ratio)) +
   facet_grid(rows = vars(model)) +
   geom_boxplot() +
@@ -210,11 +201,8 @@ all_SAR %>%
   theme(axis.title.x = element_blank(), legend.title = element_blank()) +
   labs(y = "Secondary attack rate among medical staff")
 
-```
-
-### Plots for linear model
+### Plots for linear model------------------------------------------------------
 #### SAR 
-```{r}
 comparisons = c("Scenario 1_Scenario 2", "Scenario 2_Scenario 3", "Scenario 3_Scenario 4", "Scenario 4_Scenario 5")
 
 # Extract linear model results
@@ -266,10 +254,7 @@ p2 = ggboxplot(linear_SAR_source, x = "Source", y = "SAR", fill = "Source", face
 p = ggarrange(p1, p2, nrow = 2)
 ggsave(file.path(fig_path, "sar.png"), p, height = 5, width = 6)
 
-```
-
-#### SAR stratified by individual category and source 
-```{r}
+## SAR stratified by individual category and source-----------------------------
 # SAR for patients
 # patient_test = linear_SAR %>% 
 #   wilcox_test(Patient ~ scenario) %>%
@@ -379,10 +364,8 @@ p6 = linear_SAR %>%
 p = ggarrange(p1, p2, p3, p4, p5, p6, nrow = 3, ncol = 2, legend = F)
 p = ggarrange(p, get_legend(p2), nrow = 2, heights = c(1,0.1))
 ggsave(file.path(fig_path, "sar_stratified.png"), height = 8, width = 8)
-```
 
-#### Epidemic duration, epidemic curves, and time to peak
-```{r}
+## Epidemic duration, epidemic curves, and time to peak-------------------------
 # Plot of epidemic curves
 all_curves = get_all_SEIR(list_sim, t_end)
 all_curves = do.call("rbind", lapply(all_curves, function(x) do.call("rbind", x))) %>%
@@ -446,10 +429,8 @@ p3 = time_to_peak %>%
 # Combine plots
 p = ggarrange(p1, p2, p3, nrow = 3)
 ggsave(file.path(fig_path, "epidemic_timing.png"), p, height = 6, width = 6)
-```
 
-#### Example of aerosol concentration dynamics 
-```{r}
+## Example of aerosol concentration dynamics------------------------------------
 # Simulations to load
 load("../../out/final-simulations/linear/sim_1-4_1-12000/sim_1-4_1-12000_1.rda")
 all_simulations = do.call("rbind", `sim_1-4_1-12000_1`[["global_environment"]]) %>%
@@ -478,17 +459,17 @@ first_day_infectious = `sim_1-4_1-12000_1`[["global_status"]] %>%
   full_join(., all_dates_locations, by = c("room", "time")) %>%
   mutate(n = ifelse(is.na(n), 0, n)) %>%
   filter(room %in% c("Corridor", "Nursing Station", "Office", "Medical Staff Room", "Paramedical Staff Room", "Patient Room 1", "Patient Room 6"))
-  
-  
+
+
 p1 = all_simulations %>% 
   filter(time <= end_cut, time >= start_cut, id_room %in% c(1, 6, 18:22)) %>%
   mutate(
     room = recode(id_room, !!!dict_rooms),
     time = recode(time, !!!dict_time)
-      ) %>%
+  ) %>%
   mutate(
     room = factor(room, c("Corridor", "Nursing Station", "Office", "Medical Staff Room", "Paramedical Staff Room", paste("Patient Room", c(1:6,8:17))))
-    ) %>%
+  ) %>%
   ggplot(., aes(x = time, y = env/volume)) +
   facet_grid(cols = vars(room)) +
   scale_x_datetime(labels = scales::date_format("%H:%M")) +
@@ -527,16 +508,16 @@ random_day_infectious = `sim_1-4_1-12000_1`[["global_status"]] %>%
   full_join(., all_dates_locations, by = c("room", "time")) %>%
   mutate(n = ifelse(is.na(n), 0, n)) %>%
   filter(room %in% c("Corridor", "Nursing Station", "Office", "Medical Staff Room", "Paramedical Staff Room", "Patient Room 1", "Patient Room 6"))
-  
+
 p2 = all_simulations %>% 
   filter(time <= end_cut, time >= start_cut, id_room %in% c(1, 6, 18:22)) %>%
   mutate(
     room = recode(id_room, !!!dict_rooms),
     time = recode(time, !!!dict_time)
-      ) %>%
+  ) %>%
   mutate(
     room = factor(room, c("Corridor", "Nursing Station", "Office", "Medical Staff Room", "Paramedical Staff Room", paste("Patient Room", c(1:6,8:17))))
-    ) %>%
+  ) %>%
   ggplot(., aes(x = time, y = env/volume)) +
   facet_grid(cols = vars(room)) +
   scale_x_datetime(labels = scales::date_format("%H:%M")) +
@@ -554,4 +535,3 @@ p2 = all_simulations %>%
 # Combine plots
 p = ggarrange(p1, p2, nrow = 2)
 ggsave(file.path(fig_path, "dynamics_aerosols.png"), p, height = 6, width = 12)
-```

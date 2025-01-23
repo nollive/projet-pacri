@@ -9,7 +9,74 @@ dict_cat = c("aux nurse" = "Paramedical",
              "student nurse" = "Paramedical",
              "reeducation staff" = "Paramedical",
              "ext physician" = "Medical",
-             "physician" = "Medical")
+             "physician" = "Medical",
+             "patient" = "Patient")
+
+dict_cat_initial = c("administration" = "Other",
+                     "aux nurse" = "HCW", 
+                     "ext physician" = "HCW",
+                     "investigation" = "Other",
+                     "logistic" = "Other",
+                     "nurse" = "HCW",
+                     "other" = "Other",
+                     "physician" = "HCW",
+                     "reeducation staff" = "HCW",
+                     "student nurse" = "HCW",
+                     "visitor" = "Visitor"
+                    )
+
+dict_cat_num = c(
+  "1" = "nurse",
+  "2" = "aux nurse",
+  "3" = "reeducation staff",
+  "4" = "physician",
+  "5" = "ext physician",
+  "6" = "administration",
+  "7" = "logistic",
+  "8" = "investigation",
+  "9" = "patient",
+  "10" = "visitor",
+  "11" = "other",
+  "12" = "student nurse"
+)
+
+dict_ward = c(
+  "AURÉLIEN DINH" = "Maladies infectieuses",
+  "DENIS MALVY" = "Maladies infectieuses",
+  "DJILLALI ANNANE" = "Reanimation",
+  "ELSA KERMORVANT" = "Reanimation pediatrique", 
+  "GÉRALDINE MARTIN-GAUJARD" = "Geriatrie",
+  "GÉRARD CHERON" = "Urgence pediatrique",
+  "JULIE TOUBIANA" = "Pediatrie",
+  "KARIM TAZAROURTE" = "Urgences",
+  "LAURENT ARGAUD" = "Reanimation",
+  "MAGALI GUICHARDON" = "Geriatrie",
+  "MARION DOUPLAT" = "Urgences", 
+  "OLIVIER BOUCHAUD" = "Maladies infectieuses", 
+  "OLIVIER LAMBOTTE" = "Medecine interne", 
+  "OLIVIER SITBON" = "Pneumologie", 
+  "SÉBASTIEN BEAUNE" = "Urgences", 
+  "THOMAS RIMMELE" = "Reanimation chir" 
+)
+
+dict_hosp = c(
+  "AURÉLIEN DINH" = "APHP - RAYMOND POINCARÉ",
+  "DENIS MALVY" = "CHU DE BORDEAUX - PELLEGRIN",
+  "DJILLALI ANNANE" = "APHP - RAYMOND POINCARÉ",
+  "ELSA KERMORVANT" = "APHP - NECKER ENFANTS MALADES", 
+  "GÉRALDINE MARTIN-GAUJARD" = "HC DE LYON - EDOUARD HERRIOT",
+  "GÉRARD CHERON" = "APHP - NECKER ENFANTS MALADES",
+  "JULIE TOUBIANA" = "APHP - NECKER ENFANTS MALADES",
+  "KARIM TAZAROURTE" = "HC DE LYON - EDOUARD HERRIOT",
+  "LAURENT ARGAUD" = "HC DE LYON - EDOUARD HERRIOT",
+  "MAGALI GUICHARDON" = "APHP - PAUL BROUSSE",
+  "MARION DOUPLAT" = "HC DE LYON - SUD", 
+  "OLIVIER BOUCHAUD" = "APHP - AVICENNE", 
+  "OLIVIER LAMBOTTE" = "APHP - BICÊTRE", 
+  "OLIVIER SITBON" = "APHP - BICÊTRE", 
+  "SÉBASTIEN BEAUNE" = "APHP - AMBROISE PARÉ", 
+  "THOMAS RIMMELE" = "HC DE LYON - EDOUARD HERRIOT" 
+)
 
 dict_scenarios = c("sim_1-4_20" = "Scenario 1",
                    "sim_1-2_16" = "Scenario 2",
@@ -178,9 +245,13 @@ hcw_coherent_interaction = function(df, agenda) {
   ids = unname(unlist(df[, c("from", "to")]))
   ids = ids[grepl("^PE-", ids)]
   presence_dates = agenda %>%
-    filter(id %in% ids, floor_date(firstDate, "day") == floor_date(df$date_posix, "day"))
+    filter(id %in% ids, floor_date(firstDate, "hour") <= floor_date(df$date_posix, "hour"), floor_date(lastDate, "hour") >= floor_date(df$date_posix, "hour"))
   
-  out = all(presence_dates$firstDate <= df$date_posix & presence_dates$lastDate >= df$date_posix+df$length) 
+  if (length(ids) != nrow(presence_dates)) {
+    out = F
+  } else {
+    out = all(presence_dates$firstDate <= df$date_posix & presence_dates$lastDate >= df$date_posix+df$length) 
+  }
   return(out)
 }
 
@@ -244,51 +315,6 @@ get_location_during_schedule = function(df, start_cut, end_cut) {
 }
 
 # Functions to analyze networks-------------------------------------------------
-# Function to trim synthetic networks when contacts occur when an individual is not 
-# present in the ward
-trim_interactions_agenda = function(df, admission, agenda) {
-  pa = c(df$from, df$to)[grepl("^PA-", c(df$from, df$to))]
-  pe = c(df$from, df$to)[grepl("^PE-", c(df$from, df$to))]
-  allLastDates = c()
-  allFirstDates = c()
-  
-  df$before_schedule = FALSE
-  
-  if (length(pa)>0) {
-    allLastDates = c(as_datetime(paste(admission$lastDate[admission$id %in% pa], "23:59:30")))
-    allFirstDates = c(as_datetime(paste(admission$firstDate[admission$id %in% pa], "00:00:00")))
-  } 
-  
-  if (length(pe)>0) {
-    pe_firstDates = agenda %>%
-      filter(id %in% pe, floor_date(firstDate, "day") == floor_date(df$date_posix, "day")) %>% 
-      pull(firstDate)
-    
-    pe_lastDates = agenda %>% 
-      filter(id %in% pe, floor_date(firstDate, "day") == floor_date(df$date_posix, "day")) %>% 
-      pull(lastDate)
-
-    allLastDates = c(allLastDates, pe_lastDates)
-    allFirstDates = c(allFirstDates, pe_firstDates)
-  }
-  
-  allLastDates = as_datetime(allLastDates)
-  allFirstDates = as_datetime(allFirstDates)
-  
-  if (any(allLastDates < df$date_posix + df$length)) df$length = as.numeric(difftime(min(allLastDates), df$date_posix, units = "secs"))
-  if (any(allFirstDates > df$date_posix)) {
-    if (any(allFirstDates > df$date_posix & allFirstDates > df$date_posix+df$length)) {
-      df$before_schedule = T
-    } else {
-      newStart = max(allFirstDates)
-      df$length = as.numeric(difftime(df$date_posix+df$length, newStart, units = "secs"))
-      df$date_posix = newStart
-    }
-  }
-  
-  return(df)
-}
-
 # Function to return a set of network metrics (from Leclerc et al., 2024)
 # https://gitlab.pasteur.fr/qleclerc/network_algorithm/-/tree/main?ref_type=heads
 get_net_metrics = function(graph_data, adm_data, iter = 0, db_type = "Observed", network = "Hospital"){
@@ -405,21 +431,47 @@ temporal_correlation = function(graph_data){
 }
 
 # Function to get the number of contacts by hour for the different pairs of participants
-contact_numbers = function(db, db_type, network) {
+contact_numbers = function(db, db_type, network, analysis_type = "Final") {
   out = data.frame()
-  dict_pair = c("PA-PA" = "Patient-patient", "PA-PE" = "Patient-staff", "PE-PE" = "Staff-staff")
   
-  # Input data
-  db = db %>% 
-    select(from, to, date_posix, length) %>%
-    mutate(
-      type = case_when(
-      substr(from, 1, 2) != substr(to, 1, 2) ~ "PA-PE",
-      .default = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))
+  if (analysis_type == "Final") {
+    dict_pair = c("PA-PA" = "Patient-patient", "PA-PE" = "Patient-staff", "PE-PE" = "Staff-staff") 
+    
+    # Input data
+    db = db %>% 
+      select(from, to, date_posix, length) %>%
+      mutate(
+        type = case_when(
+          substr(from, 1, 2) != substr(to, 1, 2) ~ "PA-PE",
+          .default = paste0(substr(from, 1, 2), "-", substr(to, 1, 2))
+        )
       )
-    )
+  } else {
+    dict_pair = c("PA-PA" = "Patient-Patient", "PA-PE" = "Patient-HCW", "PE-PE" = "HCW-HCW", 
+                  "PA-OT" = "Patient-Other", "PE-OT" = "HCW-Other", "OT-OT" = "Other-Other",
+                  "PA-VI" = "Patient-Visitor", "PE-VI" = "HCW-Visitor", "OT-VI" = "Other-Visitor",
+                  "VI-VI" = "Visitor-Visitor") 
+    
+    # Input data
+    db = db %>%
+      mutate(
+        type = case_when(
+          from_cat == to_cat & from_cat == "Patient" ~ 'PA-PA',
+          from_cat == to_cat & from_cat == "HCW" ~ 'PE-PE',
+          from_cat == to_cat & from_cat == "Other" ~ 'OT-OT',
+          from_cat == to_cat & from_cat == "Visitor" ~ 'VI-VI',
+          from_cat != to_cat & from_cat %in% c("Patient", "HCW") & to_cat %in% c("Patient", "HCW") ~ "PA-PE",
+          from_cat != to_cat & from_cat %in% c("Patient", "Other") & to_cat %in% c("Patient", "Other") ~ "PA-OT",
+          from_cat != to_cat & from_cat %in% c("Patient", "Visitor") & to_cat %in% c("Patient", "Visitor") ~ "PA-VI",
+          from_cat != to_cat & from_cat %in% c("HCW", "Visitor") & to_cat %in% c("HCW", "Visitor") ~ "PE-VI",
+          from_cat != to_cat & from_cat %in% c("Other", "Visitor") & to_cat %in% c("Other", "Visitor") ~ "OT-VI",
+          from_cat != to_cat & from_cat %in% c("Other", "HCW") & to_cat %in% c("Other", "HCW") ~ "PE-OT",
+        )
+      ) %>%
+      select(from, to, date_posix, length, type)
+  }
   
-  for (p in c("PA-PA", "PA-PE", "PE-PE")) {
+  for (p in names(dict_pair)) {
     out_temp = db %>%
       filter(type == p) %>%
       mutate(date_posix = floor_date(as_datetime(date_posix), "hour")) %>%
@@ -452,6 +504,51 @@ contact_numbers = function(db, db_type, network) {
 
 
 # Functions to reconstruct individual locations---------------------------------
+# Function to trim synthetic networks when contacts occur when an individual is not 
+# present in the ward
+trim_interactions_agenda = function(df, admission, agenda) {
+  pa = c(df$from, df$to)[grepl("^PA-", c(df$from, df$to))]
+  pe = c(df$from, df$to)[grepl("^PE-", c(df$from, df$to))]
+  allLastDates = c()
+  allFirstDates = c()
+  
+  df$before_schedule = FALSE
+  
+  if (length(pa)>0) {
+    allLastDates = c(as_datetime(paste(admission$lastDate[admission$id %in% pa], "23:59:30")))
+    allFirstDates = c(as_datetime(paste(admission$firstDate[admission$id %in% pa], "00:00:00")))
+  } 
+  
+  if (length(pe)>0) {
+    pe_firstDates = agenda %>%
+      filter(id %in% pe, floor_date(firstDate, "hour") <= floor_date(df$date_posix, "hour"), floor_date(df$date_posix, "day") <= floor_date(lastDate, "day")) %>% 
+      pull(firstDate)
+    
+    pe_lastDates = agenda %>% 
+      filter(id %in% pe, floor_date(firstDate, "hour") <= floor_date(df$date_posix, "hour"), floor_date(df$date_posix, "day") <= floor_date(lastDate, "day")) %>% 
+      pull(lastDate)
+    
+    allLastDates = c(allLastDates, pe_lastDates)
+    allFirstDates = c(allFirstDates, pe_firstDates)
+  }
+  
+  allLastDates = as_datetime(allLastDates)
+  allFirstDates = as_datetime(allFirstDates)
+  
+  if (any(allLastDates < df$date_posix + df$length)) df$length = as.numeric(difftime(min(allLastDates), df$date_posix, units = "secs"))
+  if (any(allFirstDates > df$date_posix)) {
+    if (any(allFirstDates > df$date_posix & allFirstDates > df$date_posix+df$length)) {
+      df$before_schedule = T
+    } else {
+      newStart = max(allFirstDates)
+      df$length = as.numeric(difftime(df$date_posix+df$length, newStart, units = "secs"))
+      df$date_posix = newStart
+    }
+  }
+  
+  return(df)
+}
+
 # Function to reconstruct patient location when not interacting
 patient_locations = function(patient_id, patient_loc, 
                              admission = admission, 
@@ -482,7 +579,7 @@ hcw_locations = function(hcw_id, hcw_loc,
                          admission, 
                          begin_date,
                          end_date,
-                         patient_rooms_ids,
+                         rooms,
                          id_medical
                          ) {
   
@@ -498,45 +595,48 @@ hcw_locations = function(hcw_id, hcw_loc,
     pull(data)
   not_present = which(!allDates %in% present)
   if (!all(is.na(hcw_loc[not_present]))) message(paste(hcw_id, "has location assigned when not present in the ward"))
-  # hcw_loc[not_present] = -1
-  # 
-  # # Split vector into elements of consecutive identical values  
-  # loc_split = split(hcw_loc, data.table::rleid(hcw_loc))
-  # 
-  # # Assign locations to elements
-  # for (k in seq_along(loc_split)) {
-  #   
-  #   current = loc_split[[k]]
-  #   if (!is.na(unique(current))) next()
-  #   
-  #   before = ifelse(k == 1, "-1", unique(loc_split[[k-1]]))
-  #   after = ifelse(k == length(loc_split), "-1", unique(loc_split[[k+1]]))
-  #   
-  #   # If between patient room and less than 5 mins
-  #   if (before == after & length(current) <= 10 & before %in% patient_rooms_ids) {
-  #     loc_split[[k]] = rep(before, length(current))
-  #     
-  #   } else if (length(current) == 1) {
-  #     # If between two different rooms and only 30 seconds --> corridor
-  #     loc_split[[k]] = c("22")
-  #     
-  #   } else if (length(current) > threshold) {
-  #     # If more than a threshold (default = 90 min)
-  #     loc_split[[k]] = rep("-1", length(current))
-  #     
-  #     if (length(unique(before)) == 1 & all(before == patient_rooms_ids)) loc_split[[k]][1] = "22"
-  #     if (length(unique(after)) == 1 & all(after == patient_rooms_ids)) loc_split[[k]][length(current)] = "22"
-  #     
-  #   } else {
-  #     # If between two different rooms and/or more than 5 mins
-  #     resting_room = ifelse(hcw_id %in% id_medical, "18", "19")
-  #     loc_split[[k]] = c("22", rep(resting_room, length(current)-2), "22")
-  #   }
-  # }
-  # 
-  # # Return 
-  # out = unlist(loc_split)
-  # return(out)
+  hcw_loc[not_present] = -1
+
+  # Split vector into elements of consecutive identical values
+  loc_split = split(hcw_loc, data.table::rleid(hcw_loc))
+
+  # Rooms
+  patient_rooms_ids = unique(rooms$id_room[rooms$room == rooms$id_room])
+  
+  # Assign locations to elements
+  for (k in seq_along(loc_split)) {
+
+    current = loc_split[[k]]
+    if (!is.na(unique(current))) next()
+
+    before = ifelse(k == 1, "-1", unique(loc_split[[k-1]]))
+    after = ifelse(k == length(loc_split), "-1", unique(loc_split[[k+1]]))
+
+    # If between patient room and less than 5 mins
+    if (before == after & length(current) <= 10 & before %in% patient_rooms_ids) {
+      loc_split[[k]] = rep(before, length(current))
+
+    } else if (length(current) == 1) {
+      # If between two different rooms and only 30 seconds --> corridor
+      loc_split[[k]] = c(rooms$id_room[rooms$room == "Corridor"])
+
+    } else if (length(current) > threshold) {
+      # If more than a threshold (default = 90 min)
+      loc_split[[k]] = rep("-2", length(current))
+
+      if (length(unique(before)) == 1 & all(before %in% patient_rooms_ids)) loc_split[[k]][1] = rooms$id_room[rooms$room == "Corridor"]
+      if (length(unique(after)) == 1 & all(after %in% patient_rooms_ids)) loc_split[[k]][length(current)] = rooms$id_room[rooms$room == "Corridor"]
+
+    } else {
+      # If between two different rooms and/or more than 5 mins
+      resting_room = ifelse(hcw_id %in% id_medical, rooms$id_room[rooms$room == "Medical Staff Room"], rooms$id_room[rooms$room == "Paramedical Staff Room"])
+      loc_split[[k]] = c(rooms$id_room[rooms$room == "Corridor"], rep(resting_room, length(current)-2), rooms$id_room[rooms$room == "Corridor"])
+    }
+  }
+
+  # Return
+  out = unlist(loc_split)
+  return(out)
 }
 
 # Functions for plots-----------------------------------------------------------
