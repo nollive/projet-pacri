@@ -1,0 +1,27 @@
+herriot-simulated
+
+Number of rows before cutting interactions: 116499
+Number of interactions not in HCW schedule: 8204
+Number of interactions not in patient schedule: 0
+Do all individuals have at least one interaction? TRUE
+
+poincare-simulated
+
+Number of rows before cutting interactions: 259344
+Number of interactions not in HCW schedule: 30653
+Number of interactions not in patient schedule: 0
+Do all individuals have at least one interaction? TRUE
+
+herriot-observed
+
+Number of rows before cutting interactions: 2992
+Number of interactions not in HCW schedule: 0
+Number of interactions not in patient schedule: 0
+Do all individuals have at least one interaction? FALSE
+
+poincare-observed
+
+Number of rows before cutting interactions: 8311
+Number of interactions not in HCW schedule: 0
+Number of interactions not in patient schedule: 0
+Do all individuals have at least one interaction? TRUE

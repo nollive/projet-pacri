@@ -15,54 +15,72 @@ library(ggpubr)
 rm(list = ls())
 
 # Helper functions
-source("helper-functions.R")
+source("R/nodscov2/helper-functions.R")
 
 # Working directories and paths
-synthetic_path = file.path("..", "..", "data", "data-synthetic-graphs")
-fig_path = file.path("..", "..", "fig", "network_comparison")
-if (!dir.exists(fig_path)) dir.create(fig_path)
+if (!dir.exists("fig/network_comparison")) dir.create("fig/network_comparison")
 
 ## Load real and synthetic contact data-----------------------------------------
 networks = c("poincare", "herriot")
 full_network = F
 admission = list()
 schedule = list()
+schedule_original = list()
 interaction_real = list()
 interaction_synthetic = list()
 
 for (net in networks) {
   # List of individuals 
-  admission[[net]] = read.csv2(file.path(synthetic_path, "input", paste0("admission_", net, ".csv"))) %>%
+  admission[[net]] = read.csv2(paste0("data/data-synthetic-graphs/input/admission_", net, ".csv")) %>%
     mutate(
       firstDate = as_date(firstDate),
       lastDate = as_date(lastDate)
     )
   
   # Schedule of healthcare workers
-  schedule[[net]] = read.csv2(file.path(synthetic_path, "input", paste0("agenda_", net, ".csv"))) %>%
+  schedule[[net]] = read.csv2(paste0("data/data-synthetic-graphs/input/agenda_", net, ".csv")) %>%
     mutate(
       firstDate = as_datetime(firstDate),
       lastDate = as_datetime(lastDate)
     )
   
+  # Schedule of all individuals from the original dta 
+  schedule_original[[net]] = read.csv2(paste0("data/data-nodscov2/clean/sensor_cleaned_", net, ".csv")) %>%
+    mutate(
+      DATEREMISE = as_datetime(DATEREMISE),
+      DATEREC = as_datetime(DATEREC)
+    )
+  
   # Real interaction data
-  interaction_real[[net]] = read.csv2(file.path(synthetic_path, "input", paste0("interactions_", net, ".csv"))) %>%
+  interaction_real[[net]] = read.csv2(paste0("data/data-synthetic-graphs/input/interactions_", net, ".csv")) %>%
     mutate(date_posix = as_datetime(date_posix))
   
   # Synthetic data
   interaction_synthetic[[net]] = data.frame()
-  reconstructed_path = file.path(synthetic_path, "biased", net)
-  if (full_network) reconstructed_path = file.path(synthetic_path, "full", net)
+  reconstructed_path = paste0("data/data-synthetic-graphs/biased/", net)
+  if (full_network) reconstructed_path = paste0("data/data-synthetic-graphs/full/", net)
   
-  for (f in list.files(reconstructed_path, pattern = ".*csv", full.names = T)) {
+  for (f in list.files(reconstructed_path, pattern = "^truncated_data_.*csv", full.names = T)) {
+    
+    interaction_tmp = read.csv2(f) %>% 
+      mutate(
+        date_posix = as_datetime(date_posix), 
+        nSim = gsub("^.*truncated_data_|.csv$", "", f)
+      ) %>%
+      # mutate(n = 1:n()) %>%
+      # nest(.by = c(nSim, n)) %>%
+      # mutate(data = map(data, trim_interactions_agenda, admission, agenda)) %>%
+      # unnest(data) %>%
+      # filter(length > 0, before_schedule == F) %>%
+      # select(from, to, date_posix, length, from_status, to_status) %>%
+      mutate(
+        firstDate = as_datetime(date_posix),
+        lastDate = as_datetime(date_posix) + length
+      )
+    
     interaction_synthetic[[net]] = bind_rows(
       interaction_synthetic[[net]],
-      read.csv2(f) %>% 
-        mutate(
-          nSim = gsub("^.*Networks|_oneday.*$", "", f),
-          firstDate = as_datetime(date_posix),
-          lastDate = as_datetime(date_posix) + length
-        )
+      interaction_tmp
     )
   } 
 }
@@ -105,43 +123,36 @@ for (net in networks) {
   
   numbers = bind_rows(
     numbers,
-    contact_numbers(interaction_real[[net]], "Observed", net)
+    contact_numbers(interaction_real[[net]], net) %>%
+      mutate(db_type = "Observed")
   )
   
   # Prepare reconstructed data 
-  reconstructed_path = file.path(synthetic_path, "biased", net)
-  if (full_network) reconstructed_path = file.path(synthetic_path, "full", net)
+  durations = bind_rows(
+    durations, 
+    interaction_synthetic[[net]] %>%
+      mutate(date_posix = floor_date(as_datetime(date_posix), "hour")) %>%
+      group_by(nSim, from, to, date_posix) %>%
+      summarise(length = sum(length)/60, .groups = "drop") %>%
+      mutate(data = paste("Synthetic", nSim), network = net) %>%
+      select(length, network, data)
+  )
   
-  for (f in list.files(reconstructed_path, ".*.csv", full.names = T)) {
-    
-    data = read.csv2(f)
-    
-    # Contact durations
-    db_type = gsub(".*Networks|_oneday.*", "", f)
-    db_type = paste("Synthetic", db_type)
-    
-    durations = bind_rows(
-      durations, 
-      data %>%
-        mutate(date_posix = floor_date(as_datetime(date_posix), "hour")) %>%
-        group_by(from, to, date_posix) %>%
-        summarise(length = sum(length)/60, .groups = "drop") %>%
-        mutate(data = db_type, network = net) %>%
-        select(length, network, data)
-    )
-    
-    numbers = bind_rows(
-      numbers,
-      contact_numbers(data, db_type, net)
-    )
-  }
+  numbers = bind_rows(
+    numbers,
+    interaction_synthetic[[net]] %>%
+      mutate(db_type = paste("Synthetic", nSim)) %>%
+      nest(.by = db_type) %>%
+      mutate(out = map(data, contact_numbers, net = net)) %>%
+      unnest(out) 
+  )
 }
 
 # Change level order
 numbers = numbers %>%
   mutate(
     network = ifelse(network == "poincare", "Poincaré", "Herriot"),
-    data = factor(data, c("Observed", paste("Synthetic", 1:10))),
+    db_type = factor(db_type, c("Observed", paste("Synthetic", 1:10))),
     type = factor(type, levels = unique(type)),
     date_posix = factor(date_posix, levels = c("0:00","1:00","2:00","3:00","4:00",
                                                "5:00","6:00","7:00","8:00","9:00",
@@ -152,7 +163,7 @@ numbers = numbers %>%
 
 # Plot number of unique contacts
 pa = numbers %>%
-  ggplot(., aes(x = date_posix, y = med, ymin = q25, ymax = q75, fill = data, col = data, group = interaction(data, type, network))) +
+  ggplot(., aes(x = date_posix, y = med, ymin = q25, ymax = q75, fill = db_type, col = db_type, group = interaction(db_type, type, network))) +
   geom_ribbon(alpha = 0.3) +
   geom_point() +
   geom_line() +
@@ -192,8 +203,8 @@ p = ggarrange(pa, pb, nrow = 2, labels = c("A", "B"),
               heights = c(1, 0.8), common.legend = T, legend= "right")
 p
 
-if (full_network) ggsave(file.path(fig_path, "unique_contacts_full.png"), p, height = 8, width = 11)  
-if (!full_network) ggsave(file.path(fig_path, "unique_contacts_biased.png"), p, height = 8, width = 11)  
+if (full_network) ggsave("fig/network_comparison/unique_contacts_full.png", p, height = 8, width = 11)  
+if (!full_network) ggsave("fig/network_comparison/unique_contacts_biased.png", p, height = 8, width = 11)  
 
 
 ### Network metrics (degree, global efficiency, transitivity, assortativity, temporal correlation, density)
@@ -223,25 +234,21 @@ for (net in networks) {
   included_days = unique(graph_data$date_posix)
   
   # Synthetic networks
-  reconstructed_path = file.path(synthetic_path, "biased", net)
-  if (full_network) reconstructed_path = file.path(synthetic_path, "full", net)
-  simu_files = list.files(path = reconstructed_path, pattern = ".*.csv", full.names = T)
-  simu_data = data.frame()
-  
-  for(f in simu_files){
-    iter = as.numeric(gsub(".*Networks|_oneday.*", "", f))
-    graph_data = read.csv2(f) %>%
-      mutate(date_posix = floor_date(as_datetime(date_posix), "day")) %>%
+  summary_data = bind_rows(
+    summary_data,
+    interaction_synthetic[[net]] %>%
+      mutate(date_posix = floor_date(as_datetime(date_posix), "day"), nSim = as.numeric(nSim)) %>%
       filter(date_posix %in% included_days) %>%
-      select(from, to, date_posix) %>%
-      distinct %>%
-      arrange(date_posix)
-    
-    summary_data = bind_rows(
-      summary_data,
-      get_net_metrics(graph_data, adm_data, iter, "Synthetic", net)
-    )
-  }
+      select(nSim, from, to, date_posix) %>%
+      distinct() %>%
+      arrange(date_posix) %>%
+      nest(.by = nSim) %>%
+      mutate(data = map(data, get_net_metrics, adm_data = adm_data, db_type = "Synthetic", network = net)) %>%
+      unnest(data) %>%
+      select(-iter) %>%
+      rename(iter = nSim)
+  )
+
 }
 
 # Get median
@@ -271,11 +278,72 @@ p = summary_data %>%
   geom_jitter(position = position_jitterdodge(dodge.width = 0.8, jitter.width = 0.5)) + 
   facet_wrap(facets = vars(metric), ncol = 3, scales = "free_y") +
   theme_bw() +
+  expand_limits(y = 0) +
   labs(col = "Data", x = "")
+p
+if (full_network) ggsave("fig/network_comparison/metrics_full.png", p, height = 5, width = 10)
+if (!full_network) ggsave("fig/network_comparison/metrics_biased.png", p, height = 5, width = 10)
 
-if (full_network) ggsave(file.path(fig_path, "metrics_full.png"), p, height = 5, width = 10)
-if (!full_network) ggsave(file.path(fig_path, "metrics_biased.png"), p, height = 5, width = 10)
 
+## Troubleshooting assortativity by degree-------------------------------------
+# Compare number of individuals with interactions
+n_in_contact = data.frame()
+for (net in networks) {
+  n_in_contact = bind_rows(
+    n_in_contact,
+    interaction_real[[net]] %>%
+      pivot_longer(c(from, to), names_to = "pair", values_to = "id") %>%
+      summarise(n = length(unique(id)), .groups = "drop") %>%
+      mutate(data = "Observed", net = net),
+    interaction_synthetic[[net]] %>%
+      mutate(data = paste("Synthetic", nSim), net = net) %>%
+      pivot_longer(c(from, to), names_to = "pair", values_to = "id") %>%
+      group_by(data, net) %>%
+      summarise(n = length(unique(id)), .groups = "drop")
+  )
+}
+
+n_in_contact %>%
+  ggplot(., aes(x = data, y = n)) +
+  geom_point() +
+  facet_grid(rows = vars(net), scales = "free_y") +
+  theme_bw()
+  
+# Compute recurrence probability on the data by hour
+all_recurrence_prob = data.frame()
+for (net in networks) {
+  all_recurrence_prob = bind_rows(
+    all_recurrence_prob, 
+    get_recurrence_proba(interaction_real[[net]], schedule_original[[net]]) %>%
+      mutate(net = net, db_type = 'Observed') %>%
+      left_join(., admission[[net]] %>% select(id, cat), by = "id"),
+    interaction_synthetic[[net]] %>%
+      mutate(n = net, db_type = paste("Synthetic", nSim)) %>%
+      nest(.by = c(db_type, n)) %>%
+      mutate(data = map(data, get_recurrence_proba, sensor = schedule_original[[net]])) %>%
+      unnest(data) %>%
+      rename(net = n) %>%
+      left_join(., admission[[net]] %>% select(id, cat), by = "id")
+  )
+}
+
+all_recurrence_prob %>% 
+  mutate(db_type = factor(db_type, c("Observed", paste("Synthetic", 1:10)))) %>%
+  ggplot(., aes(x = db_type, fill = net, y = pind)) +
+  geom_boxplot(position = position_dodge()) +
+  geom_jitter(position = position_jitterdodge()) +
+  facet_grid(rows = vars(cat)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_blank(),
+        legend.title = element_blank()) +
+  labs(y = "Probability of recurring contacts (by hour)")
+
+all_recurrence_prob %>% 
+  mutate(db_type = ifelse(db_type == "Observed", db_type, "Simulated")) %>%
+  group_by(db_type, cat, net) %>%
+  summarise(m = mean(pind), .groups = "drop") %>%
+  pivot_wider(names_from = db_type, values_from = m)
 
 ### Troubleshooting assortativity by degree-------------------------------------
 # adm_data = admission %>%

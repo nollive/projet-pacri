@@ -37,6 +37,9 @@ out/parameters-synthetic*.rda
 # Old codes
 R/nodscov2/deprecated/
 
+# Nextflow for cluster calculation
+nextflow/
+
 # Codes with paths used on the cluster
 cluster/
 exemple_suzel/

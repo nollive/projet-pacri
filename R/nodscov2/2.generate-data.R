@@ -319,6 +319,9 @@ write.csv2(admission_nodscov2, paste0("data/data-nodscov2/clean/admission_cleane
 # HCW schedule
 write.csv2(agenda_nodscov2, paste0("data/data-nodscov2/clean/agenda_cleaned_", net, ".csv"), row.names = F, quote = F)
 
+# Schedule for all individuals
+write.csv2(sensor_nodscov2, paste0("data/data-nodscov2/clean/sensor_cleaned_", net, ".csv"), row.names = F, quote = F)
+
 # Interaction data
 write.csv2(interaction_nodscov2, paste0("data/data-nodscov2/clean/interaction_cleaned_", net, ".csv"), row.names = F, quote = F)
 
@@ -347,8 +350,8 @@ interaction_nodscov2 %>%
 # Hourly individual probability of recurring contacts and mean individual
 # probability
 pind = rep(NA, nrow(admission_nodscov2))
-for (i in seq_along(admission_nodscov2$id)) {
-  ii = admission_nodscov2$id[i]
+for (i in seq_along(sensor_nodscov2 %>% distinct(id) %>% pull(id))) { #seq_along(admission_nodscov2$id)) {
+  ii = unique(sensor_nodscov2$id)[i]#admission_nodscov2$id[i]
   
   # Get n hours spent in the ward with a sensor 
   all_h = sensor_nodscov2 %>%
@@ -624,6 +627,11 @@ for (d in 1:29) {
       filter(id %in% every_other_day) %>%
       mutate(firstDate = firstDate+3600*72*d, lastDate = lastDate+3600*72*d))
 }
+
+# Add additionnal variables
+new_agenda = new_agenda %>%
+  left_join(., admission_nodscov2 %>% select(id, status, cat, ward), by = "id") %>%
+  select(id, status, cat, ward, firstDate, lastDate)
 
 # Get new admission dates for HCWs
 new_admission_dates = new_agenda %>%

@@ -21,23 +21,23 @@ library(cowplot)
 rm(list=ls())
 
 # Helper functions
-source("helper-functions.R")
+source("R/nodscov2/helper-functions.R")
 
 # Figure paths
-fig_loc_path <- file.path("..","..", "fig", "loc-reconstruction")
-ind_paths_path <- file.path("..","..", "fig", "individual-paths")
+fig_loc_path <- "fig/loc-reconstruction"
+ind_paths_path <- "fig/loc-reconstruction/individual-paths"
 if (!dir.exists(fig_loc_path)) dir.create(fig_loc_path, recursive = TRUE)
 if (!dir.exists(ind_paths_path)) dir.create(ind_paths_path, recursive = TRUE)
 
 # Input data paths
-threshold = 90*2
 network = "herriot"
+threshold = 90*2
 
 ## Load data--------------------------------------------------------------------
 all_data = list()
-data_path = file.path("..", "..", "data", "data-synthetic-graphs") 
+
 ## Observed data 
-load(file.path(data_path, "loc", paste0(network, "-observed-reconstructed-locations-", threshold, ".rda")))
+load(paste0("data/data-synthetic-graphs/loc/", network, "-observed-reconstructed-locations-", threshold, ".rda"))
 all_data[["Observed network"]] = list(
   clusters = clusters,
   paths = paths,
@@ -55,7 +55,7 @@ rm(list = c("clusters", "paths", "global_interaction", "admission", "rooms",
             "id_hcw", "id_patient", "begin_date", "end_date", "n_subdivisions"))
 
 ## Synthetic network
-load(file.path(data_path, "loc", paste0(network, "-simulated-reconstructed-locations-", threshold, ".rda")))
+load(paste0("data/data-synthetic-graphs/loc/", network, "-simulated-reconstructed-locations-", threshold, ".rda"))
 all_data[["Synthetic network"]] = list(
   clusters = clusters,
   paths = paths,
@@ -157,75 +157,82 @@ for (d in names(all_data)) {
   )
 }
 
-# Plots
+# Mean cumulative time spent by each category of individual
+mean_cum_time = cum_time_data %>%
+  group_by(db, cat, loc) %>%
+  summarise(m = mean(time_spent), .groups = "drop")
+
+# Plot
 n = ifelse(network == "herriot", "Herriot", "Poincaré")
 th = setNames(c("30 min", "1h", "1.5h"), c(30*2, 60*2, 90*2))
 
-# Plot for medical staff
-pa = cum_time_data %>%
-  filter(cat == "Medical") %>%
-  complete(nesting(db, id, cat), loc, fill = list(time_spent = 0)) %>%
-  ggplot(., aes(x = loc, y = time_spent, fill = db)) +
+p = ggplot(cum_time_data, aes(x = loc, y = time_spent, fill = db)) +
   geom_boxplot(position = position_dodge(width = 0.8), outliers = F) +
-  geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 0.1) +
+  geom_jitter(col = "grey50", position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 0.1) +
+  geom_point(data = mean_cum_time, aes(y = m), position = position_dodge(width = 0.8), shape = 4) +
   expand_limits(y = c(0,1)) +
-  facet_grid(cols = vars(cat)) +
+  facet_grid(cols = vars(cat), scales = "free_x") +
   scale_fill_manual(values = c("Observed network" = "orange", "Synthetic network" = "darkorchid")) +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 30, hjust = 1),
         axis.title.x = element_blank(),
-        legend.title = element_blank()) +
-  labs(y = "Average proportion of daily time spent in room")
-
-# Plot for paramedical staff
-pb = cum_time_data %>%
-  filter(cat == "Paramedical") %>%
-  complete(nesting(db, id, cat), loc, fill = list(time_spent = 0)) %>%
-  ggplot(., aes(x = loc, y = time_spent, fill = db)) +
-  geom_boxplot(position = position_dodge(width = 0.8), outliers = F) +
-  geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 0.1) +
-  expand_limits(y = c(0,1)) +
-  facet_grid(cols = vars(cat)) +
-  scale_fill_manual(values = c("Observed network" = "orange", "Synthetic network" = "darkorchid")) +
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 30, hjust = 1),
-        axis.title = element_blank(), 
-        axis.text.y = element_blank(),
-        axis.ticks.y = element_blank()) +
-  labs(title = paste0(n, " - ", th[as.character(threshold)]))
-
-# Plot for patients 
-pc = cum_time_data %>%
-  filter(cat == "Patient") %>%
-  complete(nesting(db, id, cat), loc, fill = list(time_spent = 0)) %>%
-  ggplot(., aes(x = loc, y = time_spent, fill = db)) +
-  geom_boxplot(position = position_dodge(width = 0.8), outliers = F) +
-  geom_jitter(position = position_jitterdodge(dodge.width = 0.8, jitter.width = 0.2), size = 0.1) +
-  expand_limits(y = c(0,1)) +
-  facet_grid(cols = vars(cat)) +
-  scale_fill_manual(values = c("Observed network" = "orange", "Synthetic network" = "darkorchid")) +
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 30, hjust = 1),
-        axis.title = element_blank(), 
-        axis.text.y = element_blank(),
-        axis.ticks.y = element_blank())
-
-# Combined plot
-p = ggarrange(pa, pb, pc, ncol = 3, align = "h", widths = c(1,0.8,0.4), common.legend = T, legend = "bottom")
-ggsave(file.path(fig_loc_path, paste0("cumulative_time_", network, "_", threshold, ".png")), p, height = 4, width = 11)
+        plot.title = element_text(hjust = 0.5),
+        legend.title = element_blank(),
+        legend.position = "bottom") +
+  labs(y = "Average proportion of daily time spent in room", 
+       title = paste0(n, " - ", th[as.character(threshold)]))
+ggsave(paste0(fig_loc_path, "/cumulative_time_", network, "_", threshold, ".png"), p, height = 4, width = 11)
+p
 
 ## Plot individual trajectories for randomly selected individuals and days------
 # Example of individual trajectories 
 set.seed(123)
-if (data_to_load == "observed") agenda = read.csv2(file.path(data_path, "clean", "agenda_cleaned.csv"))
-if (data_to_load == "simulated") agenda = read.csv2(file.path(data_path, "input", "agenda.csv"))
-individuals_to_show = c(
-  sample(admission$id[admission$cat == "Paramedical"], 5),
-  sample(admission$id[admission$cat == "Medical"], 5),
-  sample(id_patient, 5)
-)
 
-for (y in individuals_to_show) {
+for (data_to_load in c("simulated", "observed")) {
+  if (data_to_load == "observed") agenda = read.csv2(paste0("data/data-nodscov2/clean/agenda_cleaned_", network, ".csv")) %>%
+      rename(firstDate = DATEREMISE, lastDate = DATEREC)
+  if (data_to_load == "simulated") agenda = read.csv2(paste0("data/data-synthetic-graphs/input/agenda_", network, ".csv"))
+  
+  individuals_to_show = c(
+    sample(admission$id[admission$cat == "Paramedical"], 5),
+    sample(admission$id[admission$cat == "Medical"], 5),
+    sample(admission$id[admission$cat == "Patient"], 5)
+  )
+  
+  for (y in individuals_to_show) {
+    if (grepl("^PA-", y)) {
+      days_of_presence = seq(admission %>% filter(id == y) %>% pull(firstDate), 
+                             admission %>% filter(id == y) %>% pull(lastDate), 
+                             1)
+    } else {
+      days_of_presence = agenda %>% 
+        filter(id == y) %>% 
+        mutate(k = 1:n(), firstDate = as_date(floor_date(as_datetime(firstDate), "day")), lastDate = as_date(floor_date(as_datetime(lastDate), "day"))) %>%
+        nest(.by = k) %>%
+        mutate(data = map(data, unroll_days)) %>%
+        unnest(data) %>%
+        pull(data)
+    }
+    
+    random_day = sample(unique(days_of_presence), 1)
+    individual_path = data.frame(
+      time = seq(begin_date, end_date-30, 30),
+      loc = as.vector(paths[, y]),
+      cat = as.character(admission$cat[admission$id == y])
+    ) %>%
+      filter(floor_date(time, "day") == random_day) %>%
+      mutate(loc = recode(loc, !!!c(dict_rooms_simplified, "-1" = "Absent")))
+    individual_cat = unique(individual_path$cat)
+    
+    p = ggplot(individual_path, aes(x = time, y = loc, group=cat)) +
+      geom_path(col = pal[individual_cat]) +
+      theme_bw() +
+      labs(x = "", y = paste("Location of", y))
+    ggsave(paste0(ind_paths_path, "/", network, "/", data_to_load, "/", y, "_", threshold, ".png"), p, height = 4, width = 10)
+  }
+  
+  # Plot one week for the same individual
+  y = individuals_to_show[1]
   if (grepl("^PA-", y)) {
     days_of_presence = seq(admission %>% filter(id == y) %>% pull(firstDate), 
                            admission %>% filter(id == y) %>% pull(lastDate), 
@@ -243,55 +250,24 @@ for (y in individuals_to_show) {
   random_day = sample(unique(days_of_presence), 1)
   individual_path = data.frame(
     time = seq(begin_date, end_date-30, 30),
-    loc = paths[[gsub("-", ".", y)]],
-    cat = admission$cat[admission$id == y] 
+    loc = as.vector(paths[, y]),
+    cat = as.character(admission$cat[admission$id == y])
   ) %>%
-    filter(floor_date(time, "day") == random_day) %>%
-    mutate(loc = recode(loc, !!!c(dict_rooms, "-1" = "Absent")))
+    filter(as_date(floor_date(time, "day")) %in% seq(random_day, random_day+7, 1)) %>%
+    mutate(loc = recode(loc, !!!c(dict_rooms_simplified, "-1" = "Absent")))
   individual_cat = unique(individual_path$cat)
   
   p = ggplot(individual_path, aes(x = time, y = loc, group=cat)) +
     geom_path(col = pal[individual_cat]) +
     theme_bw() +
     labs(x = "", y = paste("Location of", y))
-  ggsave(file.path(ind_paths_path, data_to_load, paste0(gsub("\\.", "-", y), ".png")), p, height = 4, width = 10)
+  ggsave(paste0(ind_paths_path, "/", network, "/", data_to_load, "/", y, "_", threshold, "_week.png"), p, height = 4, width = 20)
 }
 
-# Plot one week for the same individual
-y = individuals_to_show[1]
-if (grepl("^PA-", y)) {
-  days_of_presence = seq(admission %>% filter(id == y) %>% pull(firstDate), 
-                         admission %>% filter(id == y) %>% pull(lastDate), 
-                         1)
-} else {
-  days_of_presence = agenda %>% 
-    filter(id == y) %>% 
-    mutate(k = 1:n(), firstDate = as_date(floor_date(as_datetime(firstDate), "day")), lastDate = as_date(floor_date(as_datetime(lastDate), "day"))) %>%
-    nest(.by = k) %>%
-    mutate(data = map(data, unroll_days)) %>%
-    unnest(data) %>%
-    pull(data)
-}
-
-random_day = sample(unique(days_of_presence), 1)
-individual_path = data.frame(
-  time = seq(begin_date, end_date-30, 30),
-  loc = paths[[gsub("-", ".", y)]],
-  cat = admission$cat[admission$id == y] 
-) %>%
-  filter(floor_date(time, "day") %in% seq(random_day, random_day+7, 1)) %>%
-  mutate(loc = recode(loc, !!!c(dict_rooms, "-1" = "Absent")))
-individual_cat = unique(individual_path$cat)
-
-p = ggplot(individual_path, aes(x = time, y = loc, group=cat)) +
-  geom_path(col = pal[individual_cat]) +
-  theme_bw() +
-  labs(x = "", y = paste("Location of", y))
-# ggsave(file.path(ind_paths_path, paste0(gsub("\\.", "-", y), ".png")), p, height = 4, width = 10)
 
 ## Plot contact-related information---------------------------------------------
 # Patient - Patient contact rate per hour 
-interactions_synthetic = read.csv2(file.path(data_path, "input", "interactions_trimmed.csv")) %>%
+interactions_synthetic = read.csv2(paste0("data/data-synthetic-graphs/input/interactions_", network, "_trimmed.csv")) %>%
   mutate(
     interaction_type = case_when(
       from_status == "PA" & to_status == "PA" ~ "PA-PA",
@@ -304,7 +280,7 @@ interactions_synthetic = read.csv2(file.path(data_path, "input", "interactions_t
   summarise(n = n(), .groups = "drop") %>%
   mutate(data = "synthetic")
 
-interactions_observed = read.csv2(file.path("..", "..", "data", "data-nodscov2", "clean", "interaction_cleaned.csv")) %>%
+interactions_observed = read.csv2(paste0("data/data-nodscov2/clean/interaction_cleaned_", network, ".csv")) %>%
   mutate(
     interaction_type = case_when(
       grepl("^PA-", from) & grepl("^PA-", to) ~ "PA-PA",
@@ -326,38 +302,38 @@ bind_rows(interactions_observed, interactions_synthetic) %>%
   theme_bw() +
   labs(x = "Contact dataset", y = "Distribution of the number of interactions per hour")
 
-# Load cluster data 
-id_paramedical = admission$id[admission$cat =="Paramedical"]
-id_medical = admission$id[admission$cat =="Medical"]
-
-cluster_composition = lapply(seq_along(clusters), function(x) {
-  out = sapply(clusters[[x]], function(y) {
-    out2 = data.frame(patient = sum(y %in% id_patient), 
-                      medical = sum(y %in% id_medical), 
-                      paramedical = sum(y %in% id_paramedical),
-                      n = length(y))
-    return(out2)
-  })
-  out=data.frame(t(out))
-  out$time = x
-  return(out)
-}
-)
-
-# Plot custer composition
-p = do.call("rbind", cluster_composition) %>%
-  mutate(cluster_type = case_when(
-    paramedical > 0 & medical == 0 & patient == 0 ~ "Paramedical",
-    paramedical == 0 & medical > 0 & patient == 0 ~ "Medical",
-    paramedical == 0 & medical == 0 & patient > 0 ~ "Patient",
-    paramedical > 0 & medical == 0 & patient > 0 ~ "Paramed-Patient",
-    paramedical == 0 & medical > 0 & patient > 0 ~ "Medical-Patient",
-    .default = "All"
-  ), 
-  time = floor_date(as_datetime(recode(time, !!!dict_times)), "hour")
-  ) %>%
-  group_by(time, cluster_type) %>%
-  summarise(n=n(), .groups = "drop") %>%
-  ggplot(., aes(x = time, y = n, col = cluster_type)) +
-  geom_line() +
-  theme_bw()
+# # Load cluster data 
+# id_paramedical = admission$id[admission$cat =="Paramedical"]
+# id_medical = admission$id[admission$cat =="Medical"]
+# 
+# cluster_composition = lapply(seq_along(clusters), function(x) {
+#   out = sapply(clusters[[x]], function(y) {
+#     out2 = data.frame(patient = sum(y %in% id_patient), 
+#                       medical = sum(y %in% id_medical), 
+#                       paramedical = sum(y %in% id_paramedical),
+#                       n = length(y))
+#     return(out2)
+#   })
+#   out=data.frame(t(out))
+#   out$time = x
+#   return(out)
+# }
+# )
+# 
+# # Plot custer composition
+# p = do.call("rbind", cluster_composition) %>%
+#   mutate(cluster_type = case_when(
+#     paramedical > 0 & medical == 0 & patient == 0 ~ "Paramedical",
+#     paramedical == 0 & medical > 0 & patient == 0 ~ "Medical",
+#     paramedical == 0 & medical == 0 & patient > 0 ~ "Patient",
+#     paramedical > 0 & medical == 0 & patient > 0 ~ "Paramed-Patient",
+#     paramedical == 0 & medical > 0 & patient > 0 ~ "Medical-Patient",
+#     .default = "All"
+#   ), 
+#   time = floor_date(as_datetime(recode(time, !!!dict_times)), "hour")
+#   ) %>%
+#   group_by(time, cluster_type) %>%
+#   summarise(n=n(), .groups = "drop") %>%
+#   ggplot(., aes(x = time, y = n, col = cluster_type)) +
+#   geom_line() +
+#   theme_bw()

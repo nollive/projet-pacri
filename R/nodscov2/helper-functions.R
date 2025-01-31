@@ -85,30 +85,6 @@ dict_scenarios = c("sim_1-4_20" = "Scenario 1",
                    "sim_3-2_5" = "Scenario 5"
 )
 
-dict_rooms = c(
-  "1" = "Patient Room 1",
-  "2" = "Patient Room 2",
-  "3" = "Patient Room 3",
-  "4" = "Patient Room 4",
-  "5" = "Patient Room 5",
-  "6" = "Patient Room 6",
-  "8" = "Patient Room 8",
-  "9" = "Patient Room 9",
-  "10" = "Patient Room 10",
-  "11" = "Patient Room 11",
-  "12" = "Patient Room 12",
-  "13" = "Patient Room 13",
-  "14" = "Patient Room 14",
-  "15" = "Patient Room 15",
-  "16" = "Patient Room 16",
-  "17" = "Patient Room 17",
-  "18" = "Medical Staff Room",
-  "19" = "Paramedical Staff Room",
-  "20" = "Nursing Station",
-  "21" = "Office",
-  "22" = "Corridor"
-)
-
 # Plots-------------------------------------------------------------------------
 pal = c('Medical' = "#5CD6D6", 'Paramedical' = "#A9B9E8", 'Patient' = "#FFA766", 'Room' = "#666699")
 env_pal = c('Contact' = 'darkorange', 'Environment' =  'orchid')
@@ -431,7 +407,7 @@ temporal_correlation = function(graph_data){
 }
 
 # Function to get the number of contacts by hour for the different pairs of participants
-contact_numbers = function(db, db_type, network, analysis_type = "Final") {
+contact_numbers = function(db, network, analysis_type = "Final") {
   out = data.frame()
   
   if (analysis_type == "Final") {
@@ -493,61 +469,117 @@ contact_numbers = function(db, db_type, network, analysis_type = "Final") {
   }
   
   out = out %>%
-    mutate(date_posix = paste0(date_posix, ":00")) %>%
-    mutate(
-      data = db_type, 
-      network = network
-      )
+    mutate(date_posix = paste0(date_posix, ":00"), network = network)
   
   return(out)
 }
 
+# Function to compute the recurrence probability
+get_recurrence_proba = function(interaction, sensor) {
+  
+  ids = sort(unique(sensor$id))
+  pind = rep(NA, length(ids))
+  
+  lastday = max(floor_date(sensor$DATEREC, "day"))
+  interaction = interaction %>% filter(from %in% ids, to %in% ids, floor_date(date_posix, "day") <= lastday)
+  
+  for (i in seq_along(ids)) {
+    ii = ids[i]
+    # Get n hours spent in the ward with a sensor 
+    all_h = sensor %>%
+      filter(id == ii) %>%
+      mutate(DATEREMISE = floor_date(DATEREMISE, "hour"), DATEREC = floor_date(DATEREC, "hour"), k = 1:n()) %>%
+      arrange(DATEREMISE) %>%
+      group_by(k) %>%
+      nest() %>%
+      mutate(out = map(data, unroll_dates)) %>%
+      unnest(out) %>%
+      .$date_list
+    
+    if (length(all_h) > 1) {
+      interaction_h = vector("list", length(all_h))
+      proba_h = rep(NA, length(all_h)-1)
+      
+      # Get lists of contacts per hour
+      for (h in seq_along(all_h)) {
+        hh = all_h[h]
+        contacts = interaction %>%
+          filter(from == ii | to == ii, date_posix >= hh, date_posix < hh+3600) %>%
+          select(from, to) %>%
+          unlist()
+        contacts = unique(contacts[contacts != ii])
+        names(contacts) = NULL
+        interaction_h[[h]] = contacts 
+      }
+      
+      # Get hourly probability of recurring contacts
+      if (length(all_h)>1) {
+        for (h in 2:length(all_h)) {
+          if (length(interaction_h[[h]]) > 0) {
+            proba_h[h-1] = sum(interaction_h[[h]] %in% unlist(interaction_h[1:(h-1)])) / length(interaction_h[[h]])
+          } else {
+            proba_h[h-1] = 0
+          }
+        }
+      }
+      
+      # Mean individual hourly probability of recurring contacts
+      pind[i] = sum(proba_h) / length(proba_h)
+      
+    } else {
+      pind[i] = 0
+    } 
+  }
+  
+  out = data.frame(id = ids, pind = pind)
+  return(out)
+}
 
 # Functions to reconstruct individual locations---------------------------------
 # Function to trim synthetic networks when contacts occur when an individual is not 
 # present in the ward
-trim_interactions_agenda = function(df, admission, agenda) {
-  pa = c(df$from, df$to)[grepl("^PA-", c(df$from, df$to))]
-  pe = c(df$from, df$to)[grepl("^PE-", c(df$from, df$to))]
-  allLastDates = c()
-  allFirstDates = c()
-  
-  df$before_schedule = FALSE
-  
-  if (length(pa)>0) {
-    allLastDates = c(as_datetime(paste(admission$lastDate[admission$id %in% pa], "23:59:30")))
-    allFirstDates = c(as_datetime(paste(admission$firstDate[admission$id %in% pa], "00:00:00")))
-  } 
-  
-  if (length(pe)>0) {
-    pe_firstDates = agenda %>%
-      filter(id %in% pe, floor_date(firstDate, "hour") <= floor_date(df$date_posix, "hour"), floor_date(df$date_posix, "day") <= floor_date(lastDate, "day")) %>% 
-      pull(firstDate)
-    
-    pe_lastDates = agenda %>% 
-      filter(id %in% pe, floor_date(firstDate, "hour") <= floor_date(df$date_posix, "hour"), floor_date(df$date_posix, "day") <= floor_date(lastDate, "day")) %>% 
-      pull(lastDate)
-    
-    allLastDates = c(allLastDates, pe_lastDates)
-    allFirstDates = c(allFirstDates, pe_firstDates)
-  }
-  
-  allLastDates = as_datetime(allLastDates)
-  allFirstDates = as_datetime(allFirstDates)
-  
-  if (any(allLastDates < df$date_posix + df$length)) df$length = as.numeric(difftime(min(allLastDates), df$date_posix, units = "secs"))
-  if (any(allFirstDates > df$date_posix)) {
-    if (any(allFirstDates > df$date_posix & allFirstDates > df$date_posix+df$length)) {
-      df$before_schedule = T
-    } else {
-      newStart = max(allFirstDates)
-      df$length = as.numeric(difftime(df$date_posix+df$length, newStart, units = "secs"))
-      df$date_posix = newStart
-    }
-  }
-  
-  return(df)
-}
+# trim_interactions_agenda = function(df, admission, agenda) {
+#   pa = c(df$from, df$to)[grepl("^PA-", c(df$from, df$to))]
+#   pe = c(df$from, df$to)[grepl("^PE-", c(df$from, df$to))]
+#   allLastDates = c()
+#   allFirstDates = c()
+#   
+#   df$before_schedule = FALSE
+#   
+#   if (length(pa)>0) {
+#     allLastDates = c(as_datetime(paste(admission$lastDate[admission$id %in% pa], "23:59:30")))
+#     allFirstDates = c(as_datetime(paste(admission$firstDate[admission$id %in% pa], "00:00:00")))
+#   } 
+#   
+#   if (length(pe)>0) {
+#     pe_firstDates = agenda %>%
+#       filter(id %in% pe, floor_date(firstDate, "hour") <= floor_date(df$date_posix, "hour"), floor_date(df$date_posix, "day") <= floor_date(lastDate, "day")) %>% 
+#       pull(firstDate)
+#     
+#     pe_lastDates = agenda %>% 
+#       filter(id %in% pe, floor_date(firstDate, "hour") <= floor_date(df$date_posix, "hour"), floor_date(df$date_posix, "day") <= floor_date(lastDate, "day")) %>% 
+#       pull(lastDate)
+#     
+#     allLastDates = c(allLastDates, pe_lastDates)
+#     allFirstDates = c(allFirstDates, pe_firstDates)
+#   }
+#   
+#   allLastDates = as_datetime(allLastDates)
+#   allFirstDates = as_datetime(allFirstDates)
+#   
+#   if (any(allLastDates < df$date_posix + df$length)) df$length = as.numeric(difftime(min(allLastDates), df$date_posix, units = "secs"))
+#   if (any(allFirstDates > df$date_posix)) {
+#     if (any(allFirstDates > df$date_posix & allFirstDates > df$date_posix+df$length)) {
+#       df$before_schedule = T
+#     } else {
+#       newStart = max(allFirstDates)
+#       df$length = as.numeric(difftime(df$date_posix+df$length, newStart, units = "secs"))
+#       df$date_posix = newStart
+#     }
+#   }
+#   
+#   return(df)
+# }
 
 # Function to reconstruct patient location when not interacting
 patient_locations = function(patient_id, patient_loc, 
