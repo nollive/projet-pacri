@@ -1,0 +1,84 @@
+---
+title: "Interaction-nodscov2"
+author: "Olivier GAUFRÈS"
+date: "2024-05-03"
+output: html_document
+---
+
+
+## Libraries
+```{r setup, include=TRUE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(lubridate)
+library(tidyr)
+library(viridis)
+library(purrr)
+rm(list = ls())
+
+# Source functions, dictionaries and helpful variables
+source("../nodscov2/helper-functions.R")
+
+# Working directories and paths
+i_bird_path = file.path("..", "..", "data", "data-i-bird", "data-observed")
+
+# Load interactions data
+interactions = read.csv2(file.path(i_bird_path, "toy_mat_ctc.csv")) 
+```
+
+## I-Bird data (not shared)
+```{r load data, echo=FALSE}
+# Rearrange interaction data and create a pair id variable 
+interactions = interactions %>%
+  mutate(
+    date_posix = as_datetime(date_posix), 
+    id = 1:n()
+    ) %>%
+  nest(.by = id) %>%
+  mutate(data = map(data, get_pair_id)) %>%
+  unnest(data) %>%
+  select(-id)
+
+# Number of pairs
+interactions %>%
+  distinct(pair) %>%
+  nrow()
+
+# Verify that pairs are always coded in the same direction (from and to in the same 
+# alphanumerical order)
+interactions %>%
+  distinct(from, to, pair) %>%
+  group_by(pair) %>%
+  mutate(n = n()) %>%
+  filter(n > 1) %>%
+  distinct(pair) %>%
+  nrow()
+
+# Get number of interactions
+nrow(interactions)
+
+# Get number of exact duplicates
+interactions %>%
+  select(-c(from, to)) %>%
+  distinct() %>%
+  nrow()
+
+# Get the number of contacts that start at the same time 
+interactions %>%
+  select(-c(from, to)) %>%
+  group_by(pair, date_posix) %>%
+  mutate(n = n()) %>%
+  filter(n > 1) %>%
+  nrow()
+
+# Get the number of overlapping contacts
+interactions %>%
+  nest(.by = pair) %>%
+  mutate(data = map(data, get_overlapping_contacts)) %>%
+  unnest(data) %>%
+  filter(overlap == T) %>%
+  nrow()
+
+```
