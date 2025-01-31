@@ -22,7 +22,6 @@ infection-network_files
 *.DS_Store
 
 # Raw and processed data
-data/data-i-bird/
 data/data-nodscov2/loc/
 data/data-nodscov2/raw/
 data/data-nodscov2/symmetrisation/
@@ -53,4 +52,8 @@ exemple_suzel/
 # Figures preprocessed data
 fig/symmetrization/
 fig/loc-reconstruction/individual-paths/
+
+# I-Bird
+data/data-i-bird/
+R/i-bird/
 
