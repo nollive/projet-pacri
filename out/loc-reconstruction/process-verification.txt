@@ -6,7 +6,7 @@ Do all individuals have at least one interaction? TRUE
 
 poincare-simulated
 
-Number of interactions not in HCW schedule: 30653
+Number of interactions not in HCW schedule: 0
 Number of interactions not in patient schedule: 0
 Do all individuals have at least one interaction? TRUE
 
